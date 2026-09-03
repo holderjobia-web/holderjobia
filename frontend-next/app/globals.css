@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+}
+
+html,
+body {
+  padding: 0;
+  margin: 0;
+}
+
+body {
+  color: #152439;
+  background-color: #f6f7f4;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Fundo institucional com degradê azul marinho → verde musgo (telas de login) */
+.bg-institucional {
+  background: radial-gradient(1200px 600px at 20% -10%, #233c5e 0%, transparent 55%),
+    linear-gradient(135deg, #0f1a2c 0%, #1b2f4a 55%, #414c2c 120%);
+}
