@@ -51,6 +51,18 @@ Dois ambientes isolados: **dev** e **prod**. Detalhes em [docs/AMBIENTES.md](doc
 - **`main`** → produção (Supabase prod). Merge só com comando explícito.
 - Nunca fazer merge automático para `main`.
 
+## Backend — rodar localmente
+
+```powershell
+cd backend
+python -m venv .venv; .\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+copy .env.example ..\.env.local   # preencha SUPABASE_* e JWT_* (banco DEV)
+$env:AMBIENTE="local"; python main.py
+```
+
+Health check: `GET http://localhost:8000/health`.
+
 ## Status
 
-🚧 **Fase 0 — Consolidação e setup do repositório.** Nenhuma feature implementada ainda. Ver [docs/ARQUITETURA.md](docs/ARQUITETURA.md).
+🚧 **Etapa 2 — scaffolding do backend.** FastAPI de pé (config multi-ambiente, cliente Supabase, health check) + deploy Railway (`nixpacks.toml`/`railway.toml`). Schema do banco já criado (Supabase dev e prod). Sem rotas de negócio ainda. Ver [docs/ARQUITETURA.md](docs/ARQUITETURA.md) e [docs/AMBIENTES.md](docs/AMBIENTES.md).
