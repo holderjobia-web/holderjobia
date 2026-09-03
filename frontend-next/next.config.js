@@ -1,4 +1,12 @@
 /** @type {import('next').NextConfig} */
+
+// Garante que a URL do backend tenha esquema (https://) — evita "Invalid rewrite".
+function apiBaseUrl() {
+  const raw = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000").trim();
+  if (/^https?:\/\//i.test(raw)) return raw.replace(/\/$/, "");
+  return `https://${raw.replace(/\/$/, "")}`;
+}
+
 const nextConfig = {
   async headers() {
     return [
@@ -19,7 +27,7 @@ const nextConfig = {
     return [
       {
         source: "/api/:path*",
-        destination: `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/:path*`,
+        destination: `${apiBaseUrl()}/:path*`,
       },
     ];
   },
