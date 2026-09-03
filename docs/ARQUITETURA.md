@@ -95,9 +95,25 @@ Regras que o sócio já validou no uso manual — devem virar comportamento do s
 - **GitHub:** org `holderjobia-web`, repo `holderjobia` (privado).
 - **Supabase** · **Vercel** · **Railway** · **OpenAI (GPT)** — a provisionar.
 
-## 7. Decisões em aberto
+## 7. Multi-tenant (decidido)
 
-- Modelo de multi-tenant: um único grupo (holding do sócio) ou multi-cliente desde já?
+O sistema é **multi-cliente (multi-tenant) desde o início**, no mesmo modelo da orbitta-platform:
+
+```
+holderjob ADMIN (super admin — dono do SaaS)
+└── Cliente (ex.: JOB — dono do grupo, também é um cliente)
+    └── Empresas / Unidades do cliente
+        └── DREs, notas, dashboards (isolados por cliente)
+```
+
+- **ADMIN** (`/admin/*`): cria novos clientes/acessos e libera o acesso à ferramenta. Auth separada (cookie `admin_token`).
+- **Cliente** (`/portal/*`): administra as próprias empresas. Dados **isolados por `tenant`/cliente** (RLS no Supabase ou filtro por `cliente_id` em toda query).
+- JOB entra como o **primeiro cliente**, mesmo sendo dono — facilita escalar depois.
+- Toda tabela de domínio (`empresas`, `dre_consolidado`, etc.) leva `cliente_id`.
+
+## 8. Decisões em aberto
+
 - Domínios/DNS de dev e prod.
-- Estrutura exata das migrations iniciais (schema de `empresas` e `dre_consolidado`).
+- Estrutura exata das migrations iniciais (schema de `clientes`, `empresas` e `dre_consolidado`).
+- Isolamento: RLS (Row Level Security) no Supabase vs filtro por `cliente_id` na aplicação.
 - Formato/variações dos PDFs de DRE a suportar no parser.
