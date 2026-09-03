@@ -43,10 +43,12 @@ holderjobia/
     └── ARQUITETURA.md  # consolidação da ideia + decisões
 ```
 
-## Workflow de branches (herdado da orbitta-platform)
+## Ambientes & workflow de branches
 
-- **`dev`** → branch de trabalho. Push só em `dev` por padrão.
-- **`main`** → produção. Merge só com comando explícito.
+Dois ambientes isolados: **dev** e **prod**. Detalhes em [docs/AMBIENTES.md](docs/AMBIENTES.md).
+
+- **`dev`** → branch de trabalho / ambiente dev (Supabase dev). Push só em `dev` por padrão.
+- **`main`** → produção (Supabase prod). Merge só com comando explícito.
 - Nunca fazer merge automático para `main`.
 
 ## Status
