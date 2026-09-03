@@ -28,12 +28,15 @@ Backend (Railway) e scripts locais usam:
 
 | Variável              | Descrição                                              |
 |-----------------------|--------------------------------------------------------|
+| `AMBIENTE`            | `producao` \| `dev` \| `local` (identifica o ambiente em runtime) |
 | `SUPABASE_URL`        | URL do projeto Supabase (dev **ou** prod)              |
 | `SUPABASE_SERVICE_KEY`| Service role key do Supabase do ambiente               |
 | `JWT_SECRET`          | Assina token do portal (usuários/cliente)              |
 | `JWT_ADMIN_SECRET`    | Assina token do ADMIN (super admin do SaaS)            |
+| `CORS_ORIGINS`        | Origens liberadas (URL do frontend na Vercel). JSON ou CSV |
 | `OPENAI_API_KEY`      | Chave OpenAI (agente IA — fase futura)                 |
-| `ENVIRONMENT`         | `dev` ou `prod` (identifica o ambiente em runtime)     |
+
+> No **frontend (Vercel)** a única variável é `NEXT_PUBLIC_API_URL` = URL pública do backend na Railway (ex.: `https://holderjob-backend-dev.up.railway.app`).
 
 > O arquivo `backend/.env.example` (criado na etapa do backend) lista essas variáveis sem valores. Cada ambiente terá seu `.env` local (dev) e suas env vars no Railway (dev/prod).
 
