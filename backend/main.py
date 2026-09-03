@@ -60,6 +60,13 @@ app.add_middleware(
 
 app.add_middleware(SecurityHeadersMiddleware)
 
+# Rotas
+from routes.auth import router as auth_router
+from routes.admin_auth import router as admin_auth_router
+
+app.include_router(auth_router)
+app.include_router(admin_auth_router)
+
 
 @app.get("/")
 async def root():

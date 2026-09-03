@@ -9,6 +9,7 @@ SQL versionado do banco Supabase (PostgreSQL). Não há runner automático: cada
 | 001 | `001_clientes_e_acessos.sql`   | `admins` (super admin do SaaS), `clientes` (tenant), `usuarios` (portal) |
 | 002 | `002_empresas.sql`             | `empresas` (unidades do cliente, com código único)      |
 | 003 | `003_dre_consolidado.sql`      | `dre_consolidado` (base tidy: 1 linha por unidade/mês)  |
+| 004 | `004_seguranca_auth.sql`       | colunas de segurança: senha temporária + account lockout |
 
 ## Convenções
 
