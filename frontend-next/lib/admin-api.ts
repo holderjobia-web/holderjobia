@@ -4,8 +4,9 @@
  * cookie `admin_token` (o cookie é lido pelo middleware.ts para proteger rotas).
  */
 import axios from "axios";
+import { resolveApiBaseUrl } from "./api-base";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BASE_URL = resolveApiBaseUrl();
 
 export function saveAdminToken(token: string, user: object) {
   localStorage.setItem("admin_token", token);

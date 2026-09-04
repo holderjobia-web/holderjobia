@@ -4,8 +4,9 @@
  * `token` (lido pelo middleware.ts para proteger as rotas /portal/*).
  */
 import axios from "axios";
+import { resolveApiBaseUrl } from "./api-base";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+const BASE_URL = resolveApiBaseUrl();
 
 export function savePortalToken(token: string, user: object) {
   localStorage.setItem("portal_token", token);
