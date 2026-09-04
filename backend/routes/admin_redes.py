@@ -108,3 +108,12 @@ async def atualizar_rede(
     if not res.data:
         raise HTTPException(status_code=404, detail="Rede não encontrada.")
     return res.data[0]
+
+
+@router.delete("/{rede_id}")
+async def remover_rede(rede_id: str, _: dict = Depends(admin_atual)):
+    """Exclui a rede. As empresas vinculadas ficam sem rede (FK SET NULL)."""
+    res = supabase.table("redes").delete().eq("id", rede_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Rede não encontrada.")
+    return {"removida": True}

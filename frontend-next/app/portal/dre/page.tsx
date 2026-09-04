@@ -39,6 +39,7 @@ export default function EnvioDrePage() {
   const [erro, setErro] = useState("");
   const [ok, setOk] = useState("");
   const [processandoId, setProcessandoId] = useState<string | null>(null);
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function carregarUploads() {
@@ -98,6 +99,34 @@ export default function EnvioDrePage() {
       setErro(err?.response?.data?.detail ?? "Falha ao processar o arquivo.");
     } finally {
       setProcessandoId(null);
+    }
+  }
+
+  async function excluirEnvio(u: Upload) {
+    const aviso =
+      `Excluir o envio "${u.nome_arquivo}"?\n\n` +
+      "Isso remove o PDF e também os lançamentos mensais que ele gerou nos " +
+      "dashboards. Esta ação não tem volta.";
+    if (!window.confirm(aviso)) return;
+    setErro("");
+    setOk("");
+    setExcluindoId(u.id);
+    try {
+      const { data } = await portalApi.delete<{
+        envio_removido: boolean;
+        lancamentos_removidos: number;
+      }>(`/dre/uploads/${u.id}`);
+      const n = data.lancamentos_removidos;
+      setOk(
+        n > 0
+          ? `Envio excluído. ${n} lançamento(s) mensal(is) removido(s) dos dashboards.`
+          : "Envio excluído."
+      );
+      await carregarUploads();
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao excluir o envio.");
+    } finally {
+      setExcluindoId(null);
     }
   }
 
@@ -257,6 +286,14 @@ export default function EnvioDrePage() {
                           : u.status === "processado"
                             ? "Reprocessar"
                             : "Processar"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => excluirEnvio(u)}
+                        disabled={excluindoId === u.id}
+                        className="ml-2 rounded-lg border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        {excluindoId === u.id ? "Excluindo..." : "Excluir"}
                       </button>
                     </td>
                   </tr>

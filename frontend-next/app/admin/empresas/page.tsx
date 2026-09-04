@@ -39,6 +39,12 @@ export default function EmpresasPage() {
   const [novaRedeSegmento, setNovaRedeSegmento] = useState("");
   const [salvandoRede, setSalvandoRede] = useState(false);
 
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [editNome, setEditNome] = useState("");
+  const [editSegmento, setEditSegmento] = useState("");
+  const [editRedeId, setEditRedeId] = useState("");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
   useEffect(() => {
     adminApi
       .get<Cliente[]>("/admin/clientes")
@@ -118,6 +124,86 @@ export default function EmpresasPage() {
     }
   }
 
+  function iniciarEdicao(emp: Empresa) {
+    setEditandoId(emp.id);
+    setEditNome(emp.nome_razao_social);
+    setEditSegmento(emp.segmento ?? "");
+    setEditRedeId(emp.rede_id ?? "");
+    setErro("");
+  }
+
+  function cancelarEdicao() {
+    setEditandoId(null);
+  }
+
+  async function salvarEdicao(emp: Empresa) {
+    if (!editNome.trim()) {
+      setErro("O nome da empresa não pode ficar em branco.");
+      return;
+    }
+    setSalvandoEdicao(true);
+    setErro("");
+    try {
+      await adminApi.patch(`/admin/empresas/${emp.id}`, {
+        nome_razao_social: editNome.trim(),
+        segmento: editSegmento.trim() || null,
+        rede_id: editRedeId || null,
+      });
+      setEditandoId(null);
+      await carregarEmpresas(clienteId);
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao salvar as alterações.");
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  }
+
+  async function alternarAtiva(emp: Empresa) {
+    setErro("");
+    try {
+      await adminApi.patch(`/admin/empresas/${emp.id}`, { ativa: !emp.ativa });
+      await carregarEmpresas(clienteId);
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao alterar o status.");
+    }
+  }
+
+  async function excluirEmpresa(emp: Empresa) {
+    const confirmacao = window.prompt(
+      `EXCLUIR a empresa "${emp.nome_razao_social}"?\n\n` +
+        "Isso remove permanentemente TODO o histórico de DRE, uploads e " +
+        "participações societárias vinculadas a ela. Esta ação NÃO tem volta.\n\n" +
+        `Para confirmar, digite o código da unidade: ${emp.codigo}`
+    );
+    if (confirmacao === null) return;
+    if (confirmacao.trim() !== emp.codigo) {
+      setErro("Código não confere. Exclusão cancelada.");
+      return;
+    }
+    setErro("");
+    try {
+      await adminApi.delete(`/admin/empresas/${emp.id}`);
+      await carregarEmpresas(clienteId);
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao excluir a empresa.");
+    }
+  }
+
+  async function excluirRede(rede: Rede) {
+    const aviso =
+      `Excluir a rede/negócio "${rede.nome}"?\n\n` +
+      "As empresas vinculadas continuam existindo, mas ficam sem rede. " +
+      "Esta ação não tem volta.";
+    if (!window.confirm(aviso)) return;
+    setErro("");
+    try {
+      await adminApi.delete(`/admin/redes/${rede.id}`);
+      await carregarEmpresas(clienteId);
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao excluir a rede.");
+    }
+  }
+
   return (
     <AdminShell titulo="Empresas">
       {clientes.length === 0 ? (
@@ -174,9 +260,17 @@ export default function EmpresasPage() {
                 {redes.map((r) => (
                   <span
                     key={r.id}
-                    className="rounded-full bg-navy-50 px-3 py-1 text-xs font-medium text-navy-700"
+                    className="inline-flex items-center gap-2 rounded-full bg-navy-50 px-3 py-1 text-xs font-medium text-navy-700"
                   >
                     {r.nome}
+                    <button
+                      type="button"
+                      onClick={() => excluirRede(r)}
+                      title="Excluir rede"
+                      className="text-navy-400 hover:text-red-600"
+                    >
+                      ×
+                    </button>
                   </span>
                 ))}
               </div>
@@ -255,54 +349,134 @@ export default function EmpresasPage() {
                   <th className="text-left font-semibold px-4 py-3">Segmento</th>
                   <th className="text-left font-semibold px-4 py-3">%</th>
                   <th className="text-left font-semibold px-4 py-3">Status</th>
+                  <th className="text-right font-semibold px-4 py-3">Ações</th>
                 </tr>
               </thead>
               <tbody>
                 {carregando ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-navy-500">
+                    <td colSpan={7} className="px-4 py-6 text-center text-navy-500">
                       Carregando...
                     </td>
                   </tr>
                 ) : empresas.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-navy-500">
+                    <td colSpan={7} className="px-4 py-6 text-center text-navy-500">
                       Nenhuma empresa cadastrada para este cliente.
                     </td>
                   </tr>
                 ) : (
-                  empresas.map((emp) => (
-                    <tr key={emp.id} className="border-t border-navy-100">
-                      <td className="px-4 py-3 text-navy-800 font-medium">
-                        {emp.codigo}
-                      </td>
-                      <td className="px-4 py-3 text-navy-800">
-                        {emp.nome_razao_social}
-                      </td>
-                      <td className="px-4 py-3 text-navy-600">
-                        {redes.find((r) => r.id === emp.rede_id)?.nome ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-navy-600">
-                        {emp.segmento ?? "—"}
-                      </td>
-                      <td className="px-4 py-3 text-navy-600">
-                        {emp.percentual_participacao != null
-                          ? `${emp.percentual_participacao}%`
-                          : "—"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                            emp.ativa
-                              ? "bg-moss-100 text-moss-800"
-                              : "bg-navy-100 text-navy-600"
-                          }`}
-                        >
-                          {emp.ativa ? "Ativa" : "Inativa"}
-                        </span>
-                      </td>
-                    </tr>
-                  ))
+                  empresas.map((emp) => {
+                    const emEdicao = editandoId === emp.id;
+                    return (
+                      <tr key={emp.id} className="border-t border-navy-100">
+                        <td className="px-4 py-3 text-navy-800 font-medium">
+                          {emp.codigo}
+                        </td>
+                        <td className="px-4 py-3 text-navy-800">
+                          {emEdicao ? (
+                            <input
+                              value={editNome}
+                              onChange={(e) => setEditNome(e.target.value)}
+                              className="w-full rounded-lg border border-navy-200 px-2 py-1 text-sm outline-none focus:border-moss-500"
+                            />
+                          ) : (
+                            emp.nome_razao_social
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-navy-600">
+                          {emEdicao ? (
+                            <select
+                              value={editRedeId}
+                              onChange={(e) => setEditRedeId(e.target.value)}
+                              className="w-full rounded-lg border border-navy-200 px-2 py-1 text-sm outline-none focus:border-moss-500"
+                            >
+                              <option value="">Sem rede</option>
+                              {redes.map((r) => (
+                                <option key={r.id} value={r.id}>
+                                  {r.nome}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            redes.find((r) => r.id === emp.rede_id)?.nome ?? "—"
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-navy-600">
+                          {emEdicao ? (
+                            <input
+                              value={editSegmento}
+                              onChange={(e) => setEditSegmento(e.target.value)}
+                              className="w-full rounded-lg border border-navy-200 px-2 py-1 text-sm outline-none focus:border-moss-500"
+                            />
+                          ) : (
+                            emp.segmento ?? "—"
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-navy-600">
+                          {emp.percentual_participacao != null
+                            ? `${emp.percentual_participacao}%`
+                            : "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                              emp.ativa
+                                ? "bg-moss-100 text-moss-800"
+                                : "bg-navy-100 text-navy-600"
+                            }`}
+                          >
+                            {emp.ativa ? "Ativa" : "Inativa"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          {emEdicao ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => salvarEdicao(emp)}
+                                disabled={salvandoEdicao}
+                                className="rounded-lg bg-moss-600 px-3 py-1 text-xs font-semibold text-white hover:bg-moss-700 disabled:opacity-60"
+                              >
+                                {salvandoEdicao ? "Salvando..." : "Salvar"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={cancelarEdicao}
+                                className="ml-2 rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+                              >
+                                Cancelar
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => iniciarEdicao(emp)}
+                                className="rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-700 hover:bg-navy-50"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => alternarAtiva(emp)}
+                                className="ml-2 rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-700 hover:bg-navy-50"
+                              >
+                                {emp.ativa ? "Inativar" : "Ativar"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => excluirEmpresa(emp)}
+                                className="ml-2 rounded-lg border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                              >
+                                Excluir
+                              </button>
+                            </>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

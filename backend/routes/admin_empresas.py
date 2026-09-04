@@ -180,3 +180,15 @@ async def atualizar_empresa(
     if not res.data:
         raise HTTPException(status_code=404, detail="Empresa não encontrada.")
     return res.data[0]
+
+
+@router.delete("/{empresa_id}")
+async def remover_empresa(empresa_id: str, _: dict = Depends(admin_atual)):
+    """Exclui a empresa e, em cascata, seu DRE consolidado e participações.
+
+    Operação irreversível — a confirmação forte é feita na interface.
+    """
+    res = supabase.table("empresas").delete().eq("id", empresa_id).execute()
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Empresa não encontrada.")
+    return {"removida": True}

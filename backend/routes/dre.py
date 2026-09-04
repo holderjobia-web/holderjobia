@@ -25,7 +25,7 @@ from fastapi import (
 )
 
 from config import config
-from core.auth import usuario_atual
+from core.auth import admin_do_cliente, usuario_atual
 from core.dre_processamento import processar_upload
 from supabase_client import supabase
 
@@ -220,6 +220,7 @@ def _com_indicadores(linha: dict) -> dict:
         else None
     )
     return {
+        "id": linha.get("id"),
         "mes_referencia": linha.get("mes_referencia"),
         **valores,
         "margem_liquida": _pct(valores["lucro_liquido"], receita_liquida),
@@ -244,7 +245,7 @@ async def consolidado(
 
     query = (
         supabase.table("dre_consolidado")
-        .select(", ".join(_COLUNAS_DRE))
+        .select("id, " + ", ".join(_COLUNAS_DRE))
         .eq("empresa_id", empresa_id)
     )
     de_iso = _normalizar_mes(de)
@@ -557,3 +558,64 @@ async def distribuicao_lucros(
         "empresas": empresas_out,
         "alertas": alertas,
     }
+
+
+@router.delete("/uploads/{upload_id}")
+async def remover_upload(upload_id: str, usuario: dict = Depends(admin_do_cliente)):
+    """Remove um envio (PDF) e os lançamentos consolidados que ele originou.
+
+    O vínculo entre envio e lançamento é pelo `fonte` (guarda o nome do
+    arquivo), já que não há FK direta. Remove também o arquivo do Storage.
+    """
+    cliente_id = usuario["cliente_id"]
+    res = (
+        supabase.table("dre_uploads")
+        .select("id, empresa_id, storage_path, nome_arquivo")
+        .eq("id", upload_id)
+        .eq("cliente_id", cliente_id)
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Envio não encontrado.")
+    up = res.data[0]
+
+    lancamentos_removidos = 0
+    if up.get("nome_arquivo"):
+        q = (
+            supabase.table("dre_consolidado")
+            .delete()
+            .eq("cliente_id", cliente_id)
+            .ilike("fonte", f"%{up['nome_arquivo']}%")
+        )
+        if up.get("empresa_id"):
+            q = q.eq("empresa_id", up["empresa_id"])
+        lancamentos_removidos = len(q.execute().data or [])
+
+    if up.get("storage_path"):
+        try:
+            supabase.storage.from_(config.DRE_BUCKET).remove([up["storage_path"]])
+        except Exception:  # noqa: BLE001 — arquivo órfão não deve travar a exclusão
+            logger.warning("Falha ao remover arquivo do Storage: %s", up["storage_path"])
+
+    supabase.table("dre_uploads").delete().eq("id", upload_id).eq(
+        "cliente_id", cliente_id
+    ).execute()
+
+    return {"envio_removido": True, "lancamentos_removidos": lancamentos_removidos}
+
+
+@router.delete("/consolidado/{registro_id}")
+async def remover_lancamento(registro_id: str, usuario: dict = Depends(admin_do_cliente)):
+    """Remove um lançamento mensal (linha do dre_consolidado) do próprio cliente."""
+    cliente_id = usuario["cliente_id"]
+    res = (
+        supabase.table("dre_consolidado")
+        .delete()
+        .eq("id", registro_id)
+        .eq("cliente_id", cliente_id)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Lançamento não encontrado.")
+    return {"removido": True}

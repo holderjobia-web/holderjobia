@@ -18,6 +18,7 @@ import { portalApi } from "@/lib/portal-api";
 type Empresa = { id: string; codigo: string; nome_razao_social: string };
 
 type MesDre = {
+  id: string;
   mes_referencia: string;
   receita_bruta: number | null;
   impostos: number | null;
@@ -82,6 +83,7 @@ export default function DashboardsPage() {
   const [meses, setMeses] = useState<MesDre[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
+  const [excluindoId, setExcluindoId] = useState<string | null>(null);
 
   useEffect(() => {
     portalApi
@@ -93,7 +95,7 @@ export default function DashboardsPage() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => {
+  function carregarConsolidado() {
     if (!empresaId) {
       setMeses([]);
       return;
@@ -105,7 +107,29 @@ export default function DashboardsPage() {
       .then(({ data }) => setMeses(data.meses))
       .catch(() => setErro("Não foi possível carregar os indicadores."))
       .finally(() => setCarregando(false));
+  }
+
+  useEffect(() => {
+    carregarConsolidado();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [empresaId]);
+
+  async function excluirLancamento(m: MesDre) {
+    const aviso =
+      `Excluir o lançamento de ${rotuloMes(m.mes_referencia)}?\n\n` +
+      "A linha some dos dashboards e da visão de grupo. Esta ação não tem volta.";
+    if (!window.confirm(aviso)) return;
+    setErro("");
+    setExcluindoId(m.id);
+    try {
+      await portalApi.delete(`/dre/consolidado/${m.id}`);
+      carregarConsolidado();
+    } catch {
+      setErro("Falha ao excluir o lançamento.");
+    } finally {
+      setExcluindoId(null);
+    }
+  }
 
   const dadosGrafico = useMemo(
     () =>
@@ -219,13 +243,14 @@ export default function DashboardsPage() {
                   <th className="text-right font-semibold px-4 py-3">Margem líq.</th>
                   <th className="text-left font-semibold px-4 py-3">Confiab.</th>
                   <th className="text-left font-semibold px-4 py-3">Divergência / observação</th>
+                  <th className="px-4 py-3"></th>
                 </tr>
               </thead>
               <tbody>
                 {meses.map((m) => {
                   const conf = m.confiabilidade ?? "pendente";
                   return (
-                    <tr key={m.mes_referencia} className="border-t border-navy-100">
+                    <tr key={m.id} className="border-t border-navy-100">
                       <td className="px-4 py-3 text-navy-800 font-medium">
                         {rotuloMes(m.mes_referencia)}
                       </td>
@@ -262,6 +287,16 @@ export default function DashboardsPage() {
                               </p>
                             ))
                           : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => excluirLancamento(m)}
+                          disabled={excluindoId === m.id}
+                          className="rounded-lg border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                        >
+                          {excluindoId === m.id ? "Excluindo..." : "Excluir"}
+                        </button>
                       </td>
                     </tr>
                   );
