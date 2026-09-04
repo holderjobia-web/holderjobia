@@ -1,12 +1,13 @@
 """
-Envio de DRE (portal) — etapa 5a: upload do PDF + registro dos metadados.
+Envio de DRE (portal) — upload do PDF, registro dos metadados e processamento.
 
 Rotas (exigem JWT do portal — JWT_SECRET):
-  POST /dre/uploads   → recebe o PDF (multipart), salva no Storage e registra
-  GET  /dre/uploads   → lista os envios do cliente (filtro opcional por empresa)
+  POST /dre/uploads                → recebe o PDF (multipart), salva e registra
+  GET  /dre/uploads                → lista os envios do cliente (filtro empresa)
+  POST /dre/uploads/{id}/processar → parseia o PDF e grava em dre_consolidado
 
 O binário vai para o bucket privado do Supabase Storage; o banco guarda só
-os metadados e o status. O parsing (extração dos números) é a etapa 5b.
+os metadados e o status. A extração dos números fica em core.dre_processamento.
 """
 
 import uuid
@@ -25,6 +26,7 @@ from fastapi import (
 
 from config import config
 from core.auth import usuario_atual
+from core.dre_processamento import processar_upload
 from supabase_client import supabase
 
 router = APIRouter(prefix="/dre", tags=["dre"])
@@ -150,3 +152,21 @@ async def enviar_dre(
     registro = res.data[0]
     registro.pop("storage_path", None)
     return registro
+
+
+@router.post("/uploads/{upload_id}/processar")
+async def processar_dre(
+    upload_id: str,
+    usuario: dict = Depends(usuario_atual),
+):
+    res = (
+        supabase.table("dre_uploads")
+        .select("id, cliente_id, empresa_id, storage_path, nome_arquivo, status")
+        .eq("id", upload_id)
+        .eq("cliente_id", usuario["cliente_id"])
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Envio não encontrado.")
+    return processar_upload(res.data[0])
