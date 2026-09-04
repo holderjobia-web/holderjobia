@@ -1,11 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
-import { portalApi, clearPortalToken } from "@/lib/portal-api";
+import Link from "next/link";
+import PortalShell from "@/components/portal-shell";
+import { portalApi } from "@/lib/portal-api";
+
+const CARDS = [
+  {
+    href: "/portal/dre",
+    titulo: "Envio de DRE",
+    descricao: "Envie seus DREs em PDF e acompanhe o processamento.",
+  },
+  {
+    href: "/portal/empresas",
+    titulo: "Minhas empresas",
+    descricao: "Veja as unidades cadastradas do seu grupo.",
+  },
+  {
+    href: "/portal/dre",
+    titulo: "Dashboards",
+    descricao: "Em breve: indicadores consolidados das suas empresas.",
+  },
+];
 
 export default function PortalDashboard() {
-  const router = useRouter();
   const [nome, setNome] = useState("");
   const [carregando, setCarregando] = useState(true);
 
@@ -17,48 +35,24 @@ export default function PortalDashboard() {
       .finally(() => setCarregando(false));
   }, []);
 
-  function sair() {
-    portalApi.post("/auth/logout").catch(() => {});
-    clearPortalToken();
-    router.push("/portal/login");
-  }
-
   return (
-    <div className="min-h-screen bg-[#f6f7f4]">
-      <header className="bg-moss-700 text-white">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div>
-            <span className="text-moss-100 text-xs font-semibold tracking-widest uppercase">
-              holderjob
-            </span>
-            <h1 className="text-lg font-bold leading-tight">Portal do Cliente</h1>
-          </div>
-          <button
-            onClick={sair}
-            className="text-sm rounded-lg border border-white/25 px-3 py-1.5 hover:bg-white/10 transition-colors"
+    <PortalShell titulo="Portal do Cliente">
+      <p className="text-navy-700">
+        {carregando ? "Carregando..." : `Bem-vindo, ${nome}.`}
+      </p>
+
+      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+        {CARDS.map((card) => (
+          <Link
+            key={card.titulo}
+            href={card.href}
+            className="rounded-xl bg-white border border-navy-100 p-5 shadow-sm transition-colors hover:border-moss-500"
           >
-            Sair
-          </button>
-        </div>
-      </header>
-
-      <main className="max-w-6xl mx-auto px-6 py-10">
-        <p className="text-navy-700">
-          {carregando ? "Carregando..." : `Bem-vindo, ${nome}.`}
-        </p>
-
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          {["Dashboards", "Envio de DRE", "Minhas empresas"].map((item) => (
-            <div
-              key={item}
-              className="rounded-xl bg-white border border-navy-100 p-5 shadow-sm"
-            >
-              <h2 className="font-semibold text-navy-800">{item}</h2>
-              <p className="text-sm text-navy-500 mt-1">Em construção.</p>
-            </div>
-          ))}
-        </div>
-      </main>
-    </div>
+            <h2 className="font-semibold text-navy-800">{card.titulo}</h2>
+            <p className="text-sm text-navy-500 mt-1">{card.descricao}</p>
+          </Link>
+        ))}
+      </div>
+    </PortalShell>
   );
 }
