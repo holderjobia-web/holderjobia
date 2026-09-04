@@ -70,6 +70,9 @@ class Config:
     SUPABASE_KEY: str = os.getenv("SUPABASE_SERVICE_KEY", "")
     SUPABASE_ANON_KEY: str = os.getenv("SUPABASE_ANON_KEY", "")
 
+    # Storage — bucket privado dos PDFs de DRE
+    DRE_BUCKET: str = os.getenv("DRE_BUCKET", "dre-uploads")
+
     # Autenticação JWT — separadas: portal (usuário) e admin (super admin)
     JWT_SECRET: str = os.getenv("JWT_SECRET", "")
     JWT_ADMIN_SECRET: str = os.getenv("JWT_ADMIN_SECRET", "")
