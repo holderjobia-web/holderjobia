@@ -118,14 +118,14 @@ async def enviar_dre(
             {"content-type": "application/pdf"},
         )
     except Exception as e:
-        corpo = getattr(getattr(e, "response", None), "text", "")
+        corpo = getattr(getattr(e, "response", None), "text", "") or repr(e)
         logger.exception(
-            "Falha ao enviar DRE para o Storage (bucket=%s) resposta=%s",
+            "Falha ao enviar DRE para o Storage (bucket=%s) erro=%s",
             config.DRE_BUCKET, corpo,
         )
         detalhe = "Falha ao armazenar o arquivo. Tente novamente."
         if config.AMBIENTE != "producao":
-            detalhe = f"Falha ao armazenar o arquivo: {e} {corpo}".strip()
+            detalhe = f"Falha ao armazenar o arquivo: {corpo}".strip()
         raise HTTPException(status_code=502, detail=detalhe)
 
     payload = {
