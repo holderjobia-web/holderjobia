@@ -11,6 +11,7 @@ cada request, revalidando `ativo` (revogação imediata ao desativar a conta).
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from postgrest.exceptions import APIError
 
 from config import config
 from core.security import decodificar_token
@@ -26,6 +27,11 @@ _CRED_INVALIDA = HTTPException(
     headers={"WWW-Authenticate": "Bearer"},
 )
 
+_BANCO_INDISPONIVEL = HTTPException(
+    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+    detail="Serviço temporariamente indisponível. Tente novamente em instantes.",
+)
+
 
 async def usuario_atual(token: str = Depends(oauth2_portal)) -> dict:
     """Valida o JWT do portal e retorna o usuário ativo."""
@@ -37,13 +43,16 @@ async def usuario_atual(token: str = Depends(oauth2_portal)) -> dict:
     if not usuario_id:
         raise _CRED_INVALIDA
 
-    res = (
-        supabase.table("usuarios")
-        .select("id, cliente_id, nome, email, perfil, ativo")
-        .eq("id", usuario_id)
-        .limit(1)
-        .execute()
-    )
+    try:
+        res = (
+            supabase.table("usuarios")
+            .select("id, cliente_id, nome, email, perfil, ativo")
+            .eq("id", usuario_id)
+            .limit(1)
+            .execute()
+        )
+    except APIError:
+        raise _BANCO_INDISPONIVEL
     if not res.data or not res.data[0].get("ativo"):
         raise _CRED_INVALIDA
     return res.data[0]
@@ -59,13 +68,16 @@ async def admin_atual(token: str = Depends(oauth2_admin)) -> dict:
     if not admin_id:
         raise _CRED_INVALIDA
 
-    res = (
-        supabase.table("admins")
-        .select("id, nome, email, ativo")
-        .eq("id", admin_id)
-        .limit(1)
-        .execute()
-    )
+    try:
+        res = (
+            supabase.table("admins")
+            .select("id, nome, email, ativo")
+            .eq("id", admin_id)
+            .limit(1)
+            .execute()
+        )
+    except APIError:
+        raise _BANCO_INDISPONIVEL
     if not res.data or not res.data[0].get("ativo"):
         raise _CRED_INVALIDA
     return res.data[0]

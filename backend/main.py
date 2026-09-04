@@ -50,6 +50,10 @@ app = FastAPI(
 # CORS
 _cors_origins = config.CORS_ORIGINS
 _allow_credentials = "*" not in _cors_origins
+
+# Ordem importa: o CORS precisa ser o middleware MAIS EXTERNO para que os
+# headers Access-Control-* estejam presentes até em respostas de erro.
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
@@ -57,8 +61,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-app.add_middleware(SecurityHeadersMiddleware)
 
 # Rotas
 from routes.auth import router as auth_router
