@@ -11,6 +11,7 @@ os metadados e o status. O parsing (extração dos números) é a etapa 5b.
 
 import uuid
 from datetime import date, datetime, timezone
+import logging
 
 from fastapi import (
     APIRouter,
@@ -27,6 +28,8 @@ from core.auth import usuario_atual
 from supabase_client import supabase
 
 router = APIRouter(prefix="/dre", tags=["dre"])
+
+logger = logging.getLogger(__name__)
 
 _MAX_BYTES = 20 * 1024 * 1024  # 20 MB
 _CAMPOS = (
@@ -114,11 +117,12 @@ async def enviar_dre(
             conteudo,
             {"content-type": "application/pdf"},
         )
-    except Exception:
-        raise HTTPException(
-            status_code=502,
-            detail="Falha ao armazenar o arquivo. Tente novamente.",
-        )
+    except Exception as e:
+        logger.exception("Falha ao enviar DRE para o Storage (bucket=%s)", config.DRE_BUCKET)
+        detalhe = "Falha ao armazenar o arquivo. Tente novamente."
+        if config.AMBIENTE != "producao":
+            detalhe = f"Falha ao armazenar o arquivo: {e}"
+        raise HTTPException(status_code=502, detail=detalhe)
 
     payload = {
         "cliente_id": cliente_id,
