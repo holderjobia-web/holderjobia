@@ -26,6 +26,11 @@ const CARDS = [
     titulo: "Visão do grupo",
     descricao: "Consolidado de todas as unidades e comparativo entre elas.",
   },
+  {
+    href: "/portal/orcamento",
+    titulo: "Orçamento",
+    descricao: "Defina metas por mês e compare o previsto com o realizado.",
+  },
 ];
 
 export default function PortalDashboard() {

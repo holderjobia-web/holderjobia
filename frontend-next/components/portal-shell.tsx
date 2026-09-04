@@ -10,6 +10,7 @@ const NAV = [
   { href: "/portal/dre", label: "Envio de DRE" },
   { href: "/portal/dashboards", label: "Dashboards" },
   { href: "/portal/grupo", label: "Visão do grupo" },
+  { href: "/portal/orcamento", label: "Orçamento" },
   { href: "/portal/socios", label: "Sócios & Distribuição" },
   { href: "/portal/empresas", label: "Minhas empresas" },
 ];
