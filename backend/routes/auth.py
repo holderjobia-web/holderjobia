@@ -13,9 +13,13 @@ O token é devolvido no body (o frontend decide como armazenar).
 
 from datetime import datetime, timedelta, timezone
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from postgrest.exceptions import APIError
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from config import config
 from core.auth import usuario_atual
@@ -108,7 +112,8 @@ async def login(request: Request, dados: LoginRequest):
             .limit(1)
             .execute()
         )
-    except APIError:
+    except APIError as exc:
+        logger.error("Falha ao consultar 'usuarios' no login: %s", exc, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Serviço temporariamente indisponível. Tente novamente em instantes.",

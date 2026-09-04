@@ -13,9 +13,13 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from postgrest.exceptions import APIError
 
+import logging
+
 from config import config
 from core.security import decodificar_token
 from supabase_client import supabase
+
+logger = logging.getLogger(__name__)
 
 
 oauth2_portal = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -51,7 +55,8 @@ async def usuario_atual(token: str = Depends(oauth2_portal)) -> dict:
             .limit(1)
             .execute()
         )
-    except APIError:
+    except APIError as exc:
+        logger.error("Falha ao consultar 'usuarios' (usuario_atual): %s", exc, exc_info=True)
         raise _BANCO_INDISPONIVEL
     if not res.data or not res.data[0].get("ativo"):
         raise _CRED_INVALIDA
@@ -76,7 +81,8 @@ async def admin_atual(token: str = Depends(oauth2_admin)) -> dict:
             .limit(1)
             .execute()
         )
-    except APIError:
+    except APIError as exc:
+        logger.error("Falha ao consultar 'admins' (admin_atual): %s", exc, exc_info=True)
         raise _BANCO_INDISPONIVEL
     if not res.data or not res.data[0].get("ativo"):
         raise _CRED_INVALIDA

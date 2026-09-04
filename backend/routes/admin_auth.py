@@ -9,11 +9,14 @@ Rotas:
 O JWT admin carrega tipo="admin" para não ser aceito no contexto do portal.
 """
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from postgrest.exceptions import APIError
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 from config import config
 from core.auth import admin_atual
@@ -51,7 +54,8 @@ async def admin_login(request: Request, dados: AdminLoginRequest):
             .limit(1)
             .execute()
         )
-    except APIError:
+    except APIError as exc:
+        logger.error("Falha ao consultar 'admins' no login: %s", exc, exc_info=True)
         raise _BANCO_INDISPONIVEL
 
     if not res.data:
