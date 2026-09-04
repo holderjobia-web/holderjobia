@@ -187,6 +187,12 @@ def _valores_da_linha(linha: str) -> list[Decimal]:
 # Validação por identidade contábil
 # ---------------------------------------------------------------------------
 
+def _fmt_brl(v: Decimal) -> str:
+    """Formata um Decimal como 'R$ 1.234,56' (padrão brasileiro)."""
+    s = f"{v:,.2f}"  # 1,234.56 (padrão US)
+    return "R$ " + s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def _validar_identidades(valores: dict[str, Optional[Decimal]]) -> tuple[list[str], str]:
     """Confere as identidades contábeis. Retorna (divergencias, confiabilidade).
 
@@ -196,7 +202,13 @@ def _validar_identidades(valores: dict[str, Optional[Decimal]]) -> tuple[list[st
     checks_possiveis = 0
     checks_ok = 0
 
-    def checar(nome: str, esperado_parts: list[Optional[Decimal]], sinais: list[int], alvo: Optional[Decimal]):
+    def checar(
+        rotulo: str,
+        formula: str,
+        esperado_parts: list[Optional[Decimal]],
+        sinais: list[int],
+        alvo: Optional[Decimal],
+    ):
         nonlocal checks_possiveis, checks_ok
         if alvo is None or any(p is None for p in esperado_parts):
             return  # não dá pra checar sem todos os componentes -> não inventa
@@ -207,25 +219,29 @@ def _validar_identidades(valores: dict[str, Optional[Decimal]]) -> tuple[list[st
         if abs(esperado - alvo) <= _TOLERANCIA:
             checks_ok += 1
         else:
+            dif = alvo - esperado  # type: ignore[operator]
             divergencias.append(
-                f"{nome}: esperado {esperado} pela fórmula, extraído {alvo} "
-                f"(diferença {alvo - esperado})"
+                f"{rotulo}: pela fórmula ({formula}) daria {_fmt_brl(esperado)}, "
+                f"mas o PDF traz {_fmt_brl(alvo)} — diferença {_fmt_brl(dif)}."
             )
 
     checar(
-        "receita_liquida",
+        "Receita líquida",
+        "Receita bruta − Impostos − Devoluções",
         [valores.get("receita_bruta"), valores.get("impostos"), valores.get("devolucoes")],
         [1, -1, -1],
         valores.get("receita_liquida"),
     )
     checar(
-        "resultado_operacional",
+        "Resultado operacional",
+        "Receita líquida − CSV − Despesas operacionais",
         [valores.get("receita_liquida"), valores.get("custo_servico_vendido"), valores.get("despesas_operacionais")],
         [1, -1, -1],
         valores.get("resultado_operacional"),
     )
     checar(
-        "lucro_liquido",
+        "Lucro líquido",
+        "Resultado operacional − Despesas financeiras − IR/CSLL",
         [valores.get("resultado_operacional"), valores.get("despesas_financeiras"), valores.get("ir_csll")],
         [1, -1, -1],
         valores.get("lucro_liquido"),

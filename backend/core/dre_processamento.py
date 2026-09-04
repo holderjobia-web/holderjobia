@@ -138,15 +138,9 @@ def processar_upload(upload: dict) -> dict:
             continue  # linha já existe: idempotente (ou divergência já sinalizada)
 
         # Grava-e-sinaliza: confiabilidade 'baixa' é gravada com flag + observacao.
-        obs_partes: list[str] = []
         if mes.confiabilidade == "baixa":
             sinalizados_baixa.append(mes_iso)
-            obs_partes.append(
-                "Confiabilidade BAIXA — conferência contábil não fechou; "
-                "valores conforme o PDF, revisar manualmente."
-            )
-        if mes.divergencias:
-            obs_partes.extend(mes.divergencias)
+        observacao = "; ".join(mes.divergencias) if mes.divergencias else None
 
         registro = {
             "cliente_id": cliente_id,

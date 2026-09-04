@@ -208,7 +208,7 @@ export default function DashboardsPage() {
             <div className="px-4 py-3 border-b border-navy-100">
               <h2 className="font-semibold text-navy-800">Detalhamento mensal</h2>
             </div>
-            <table className="w-full text-sm min-w-[880px]">
+            <table className="w-full text-sm min-w-[1040px]">
               <thead className="bg-navy-50 text-navy-700">
                 <tr>
                   <th className="text-left font-semibold px-4 py-3">Mês</th>
@@ -218,6 +218,7 @@ export default function DashboardsPage() {
                   <th className="text-right font-semibold px-4 py-3">Retirada</th>
                   <th className="text-right font-semibold px-4 py-3">Margem líq.</th>
                   <th className="text-left font-semibold px-4 py-3">Confiab.</th>
+                  <th className="text-left font-semibold px-4 py-3">Divergência / observação</th>
                 </tr>
               </thead>
               <tbody>
@@ -252,6 +253,15 @@ export default function DashboardsPage() {
                         >
                           {conf}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-navy-600 text-xs max-w-sm">
+                        {m.observacao
+                          ? m.observacao.split("; ").map((linha, i) => (
+                              <p key={i} className="mb-0.5 last:mb-0">
+                                {linha}
+                              </p>
+                            ))
+                          : "—"}
                       </td>
                     </tr>
                   );
