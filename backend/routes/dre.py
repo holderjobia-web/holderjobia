@@ -170,3 +170,85 @@ async def processar_dre(
     if not res.data:
         raise HTTPException(status_code=404, detail="Envio não encontrado.")
     return processar_upload(res.data[0])
+
+
+_COLUNAS_DRE = (
+    "mes_referencia", "receita_bruta", "impostos", "devolucoes",
+    "receita_liquida", "custo_servico_vendido", "despesas_operacionais",
+    "resultado_operacional", "despesas_financeiras", "ir_csll",
+    "lucro_liquido", "retirada", "confiabilidade", "fonte", "observacao",
+)
+
+
+def _f(v) -> float | None:
+    """Converte valor do banco (str/número/None) em float, preservando NULL."""
+    if v is None:
+        return None
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def _pct(numerador: float | None, base: float | None) -> float | None:
+    """Margem % = numerador/base*100. NULL se faltar componente ou base 0."""
+    if numerador is None or base is None or base == 0:
+        return None
+    return round(numerador / base * 100, 2)
+
+
+def _com_indicadores(linha: dict) -> dict:
+    """Normaliza valores monetários em float e adiciona margens derivadas.
+
+    As margens são calculadas na resposta, nunca gravadas (governança).
+    """
+    valores = {
+        c: _f(linha.get(c))
+        for c in _COLUNAS_DRE
+        if c not in ("mes_referencia", "confiabilidade", "fonte", "observacao")
+    }
+    receita_liquida = valores["receita_liquida"]
+    custo = valores["custo_servico_vendido"]
+    margem_contribuicao_base = (
+        receita_liquida - custo
+        if receita_liquida is not None and custo is not None
+        else None
+    )
+    return {
+        "mes_referencia": linha.get("mes_referencia"),
+        **valores,
+        "margem_liquida": _pct(valores["lucro_liquido"], receita_liquida),
+        "margem_operacional": _pct(valores["resultado_operacional"], receita_liquida),
+        "margem_contribuicao": _pct(margem_contribuicao_base, receita_liquida),
+        "confiabilidade": linha.get("confiabilidade"),
+        "fonte": linha.get("fonte"),
+        "observacao": linha.get("observacao"),
+    }
+
+
+@router.get("/consolidado")
+async def consolidado(
+    empresa_id: str = Query(...),
+    de: str | None = Query(None, description="mês inicial AAAA-MM"),
+    ate: str | None = Query(None, description="mês final AAAA-MM"),
+    usuario: dict = Depends(usuario_atual),
+):
+    cliente_id = usuario["cliente_id"]
+    if not _empresa_do_cliente(empresa_id, cliente_id):
+        raise HTTPException(status_code=404, detail="Empresa não encontrada.")
+
+    query = (
+        supabase.table("dre_consolidado")
+        .select(", ".join(_COLUNAS_DRE))
+        .eq("empresa_id", empresa_id)
+    )
+    de_iso = _normalizar_mes(de)
+    ate_iso = _normalizar_mes(ate)
+    if de_iso:
+        query = query.gte("mes_referencia", de_iso)
+    if ate_iso:
+        query = query.lte("mes_referencia", ate_iso)
+
+    res = query.order("mes_referencia").execute()
+    meses = [_com_indicadores(linha) for linha in (res.data or [])]
+    return {"empresa_id": empresa_id, "meses": meses}

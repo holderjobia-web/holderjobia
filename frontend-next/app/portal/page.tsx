@@ -17,9 +17,9 @@ const CARDS = [
     descricao: "Veja as unidades cadastradas do seu grupo.",
   },
   {
-    href: "/portal/dre",
+    href: "/portal/dashboards",
     titulo: "Dashboards",
-    descricao: "Em breve: indicadores consolidados das suas empresas.",
+    descricao: "Indicadores consolidados das suas empresas.",
   },
 ];
 
