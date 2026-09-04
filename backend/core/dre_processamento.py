@@ -149,7 +149,7 @@ def processar_upload(upload: dict) -> dict:
             **{c: _num(mes.valores.get(c)) for c in _COLUNAS_MONETARIAS},
             "fonte": fonte,
             "confiabilidade": mes.confiabilidade,
-            "observacao": ("; ".join(obs_partes) if obs_partes else None),
+            "observacao": observacao,
         }
         supabase.table("dre_consolidado").insert(registro).execute()
         gravados += 1
