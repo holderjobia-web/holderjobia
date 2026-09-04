@@ -22,7 +22,7 @@ from supabase_client import supabase
 router = APIRouter(prefix="/admin/empresas", tags=["admin-empresas"])
 
 _CAMPOS = (
-    "id, cliente_id, codigo, nome_razao_social, cnpj, segmento, papel_socio, "
+    "id, cliente_id, rede_id, codigo, nome_razao_social, cnpj, segmento, papel_socio, "
     "percentual_participacao, ativa, prioridade_acompanhamento, status_maturidade, "
     "data_inauguracao, observacao, criado_em, atualizado_em"
 )
@@ -30,6 +30,7 @@ _CAMPOS = (
 
 class EmpresaCriar(BaseModel):
     cliente_id: str
+    rede_id: str | None = None
     codigo: str = Field(..., min_length=1, max_length=50)
     nome_razao_social: str = Field(..., min_length=2, max_length=200)
     cnpj: str | None = Field(None, max_length=20)
@@ -43,6 +44,7 @@ class EmpresaCriar(BaseModel):
 
 
 class EmpresaAtualizar(BaseModel):
+    rede_id: str | None = None
     codigo: str | None = Field(None, min_length=1, max_length=50)
     nome_razao_social: str | None = Field(None, min_length=2, max_length=200)
     cnpj: str | None = Field(None, max_length=20)
@@ -67,6 +69,18 @@ def _cliente_existe(cliente_id: str) -> bool:
     return bool(res.data)
 
 
+def _rede_do_cliente(rede_id: str, cliente_id: str) -> bool:
+    res = (
+        supabase.table("redes")
+        .select("id")
+        .eq("id", rede_id)
+        .eq("cliente_id", cliente_id)
+        .limit(1)
+        .execute()
+    )
+    return bool(res.data)
+
+
 @router.get("")
 async def listar_empresas(
     cliente_id: str | None = Query(None),
@@ -83,6 +97,9 @@ async def listar_empresas(
 async def criar_empresa(dados: EmpresaCriar, _: dict = Depends(admin_atual)):
     if not _cliente_existe(dados.cliente_id):
         raise HTTPException(status_code=404, detail="Cliente não encontrado.")
+
+    if dados.rede_id and not _rede_do_cliente(dados.rede_id, dados.cliente_id):
+        raise HTTPException(status_code=404, detail="Rede não encontrada para este cliente.")
 
     payload = dados.model_dump(exclude_none=True)
     payload["codigo"] = payload["codigo"].strip()
@@ -124,6 +141,19 @@ async def atualizar_empresa(
     updates = dados.model_dump(exclude_unset=True)
     if not updates:
         raise HTTPException(status_code=400, detail="Nada para atualizar.")
+
+    if updates.get("rede_id"):
+        atual = (
+            supabase.table("empresas")
+            .select("cliente_id")
+            .eq("id", empresa_id)
+            .limit(1)
+            .execute()
+        )
+        if not atual.data:
+            raise HTTPException(status_code=404, detail="Empresa não encontrada.")
+        if not _rede_do_cliente(updates["rede_id"], atual.data[0]["cliente_id"]):
+            raise HTTPException(status_code=404, detail="Rede não encontrada para este cliente.")
 
     if "codigo" in updates and updates["codigo"]:
         updates["codigo"] = updates["codigo"].strip()

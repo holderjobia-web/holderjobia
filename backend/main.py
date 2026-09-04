@@ -67,6 +67,7 @@ from routes.auth import router as auth_router
 from routes.admin_auth import router as admin_auth_router
 from routes.admin_clientes import router as admin_clientes_router
 from routes.admin_empresas import router as admin_empresas_router
+from routes.admin_redes import router as admin_redes_router
 from routes.admin_usuarios import router as admin_usuarios_router
 from routes.dre import router as dre_router
 from routes.portal_empresas import router as portal_empresas_router
@@ -76,6 +77,7 @@ app.include_router(auth_router)
 app.include_router(admin_auth_router)
 app.include_router(admin_clientes_router)
 app.include_router(admin_empresas_router)
+app.include_router(admin_redes_router)
 app.include_router(admin_usuarios_router)
 app.include_router(dre_router)
 app.include_router(portal_empresas_router)

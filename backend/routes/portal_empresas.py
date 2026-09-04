@@ -16,7 +16,7 @@ router = APIRouter(prefix="/empresas", tags=["portal-empresas"])
 
 _CAMPOS = (
     "id, codigo, nome_razao_social, cnpj, segmento, percentual_participacao, "
-    "ativa, status_maturidade"
+    "ativa, status_maturidade, rede_id"
 )
 
 

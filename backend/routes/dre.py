@@ -291,23 +291,58 @@ def _agregar_mes(mes_iso: str | None, linhas: list[dict]) -> dict:
 async def consolidado_grupo(
     de: str | None = Query(None, description="mês inicial AAAA-MM"),
     ate: str | None = Query(None, description="mês final AAAA-MM"),
+    rede_id: str | None = Query(None, description="filtra por rede; ausente = todas"),
     usuario: dict = Depends(usuario_atual),
 ):
-    """Visão holding: soma todas as unidades do cliente por mês + comparativo."""
+    """Visão holding: soma as unidades do cliente por mês + comparativo.
+
+    Sem rede_id consolida TODAS as redes do dono ("Todos"); com rede_id
+    restringe às empresas daquela rede. A lista de redes vai na resposta para
+    montar o seletor.
+    """
     cliente_id = usuario["cliente_id"]
 
     emp_res = (
         supabase.table("empresas")
-        .select("id, codigo, nome_razao_social")
+        .select("id, codigo, nome_razao_social, rede_id")
         .eq("cliente_id", cliente_id)
         .execute()
     )
-    empresas_map = {e["id"]: e for e in (emp_res.data or [])}
+    todas_empresas = emp_res.data or []
+
+    redes_res = (
+        supabase.table("redes")
+        .select("id, nome")
+        .eq("cliente_id", cliente_id)
+        .order("nome")
+        .execute()
+    )
+    redes_nome = {r["id"]: r["nome"] for r in (redes_res.data or [])}
+
+    # Contagem de unidades por rede (+ pseudo-rede "sem rede") para o seletor
+    contagem: dict[str | None, int] = {}
+    for e in todas_empresas:
+        contagem[e.get("rede_id")] = contagem.get(e.get("rede_id"), 0) + 1
+    redes = [
+        {"id": rid, "nome": nome, "unidades": contagem.get(rid, 0)}
+        for rid, nome in redes_nome.items()
+    ]
+    if contagem.get(None):
+        redes.append({"id": None, "nome": "Sem rede", "unidades": contagem[None]})
+
+    # Aplica o filtro por rede (None = todas)
+    if rede_id:
+        empresas_map = {
+            e["id"]: e for e in todas_empresas if e.get("rede_id") == rede_id
+        }
+    else:
+        empresas_map = {e["id"]: e for e in todas_empresas}
 
     query = (
         supabase.table("dre_consolidado")
         .select("empresa_id, " + ", ".join(_COLUNAS_DRE))
         .eq("cliente_id", cliente_id)
+        .in_("empresa_id", list(empresas_map.keys()) or ["00000000-0000-0000-0000-000000000000"])
     )
     de_iso = _normalizar_mes(de)
     ate_iso = _normalizar_mes(ate)
@@ -345,6 +380,8 @@ async def consolidado_grupo(
 
     return {
         "cliente_id": cliente_id,
+        "rede_selecionada": rede_id,
+        "redes": redes,
         "total_unidades": len(empresas_map),
         "unidades_com_dados": len(por_empresa),
         "meses": meses,

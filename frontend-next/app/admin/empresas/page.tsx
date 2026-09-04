@@ -6,6 +6,8 @@ import { adminApi } from "@/lib/admin-api";
 
 type Cliente = { id: string; nome: string };
 
+type Rede = { id: string; nome: string; segmento: string | null };
+
 type Empresa = {
   id: string;
   codigo: string;
@@ -14,12 +16,14 @@ type Empresa = {
   segmento: string | null;
   percentual_participacao: number | null;
   ativa: boolean;
+  rede_id: string | null;
 };
 
 export default function EmpresasPage() {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [clienteId, setClienteId] = useState("");
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
+  const [redes, setRedes] = useState<Rede[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -29,6 +33,11 @@ export default function EmpresasPage() {
   const [cnpj, setCnpj] = useState("");
   const [segmento, setSegmento] = useState("");
   const [participacao, setParticipacao] = useState("");
+  const [redeId, setRedeId] = useState("");
+
+  const [novaRede, setNovaRede] = useState("");
+  const [novaRedeSegmento, setNovaRedeSegmento] = useState("");
+  const [salvandoRede, setSalvandoRede] = useState(false);
 
   useEffect(() => {
     adminApi
@@ -44,10 +53,12 @@ export default function EmpresasPage() {
     if (!id) return;
     setCarregando(true);
     try {
-      const { data } = await adminApi.get<Empresa[]>("/admin/empresas", {
-        params: { cliente_id: id },
-      });
-      setEmpresas(data);
+      const [empRes, redesRes] = await Promise.all([
+        adminApi.get<Empresa[]>("/admin/empresas", { params: { cliente_id: id } }),
+        adminApi.get<Rede[]>("/admin/redes", { params: { cliente_id: id } }),
+      ]);
+      setEmpresas(empRes.data);
+      setRedes(redesRes.data);
     } catch {
       setErro("Não foi possível carregar as empresas.");
     } finally {
@@ -58,6 +69,26 @@ export default function EmpresasPage() {
   useEffect(() => {
     carregarEmpresas(clienteId);
   }, [clienteId]);
+
+  async function criarRede(e: FormEvent) {
+    e.preventDefault();
+    setErro("");
+    setSalvandoRede(true);
+    try {
+      await adminApi.post("/admin/redes", {
+        cliente_id: clienteId,
+        nome: novaRede.trim(),
+        segmento: novaRedeSegmento.trim() || null,
+      });
+      setNovaRede("");
+      setNovaRedeSegmento("");
+      await carregarEmpresas(clienteId);
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao criar a rede.");
+    } finally {
+      setSalvandoRede(false);
+    }
+  }
 
   async function criar(e: FormEvent) {
     e.preventDefault();
@@ -71,12 +102,14 @@ export default function EmpresasPage() {
         cnpj: cnpj.trim() || null,
         segmento: segmento.trim() || null,
         percentual_participacao: participacao ? Number(participacao) : null,
+        rede_id: redeId || null,
       });
       setCodigo("");
       setNome("");
       setCnpj("");
       setSegmento("");
       setParticipacao("");
+      setRedeId("");
       await carregarEmpresas(clienteId);
     } catch (err: any) {
       setErro(err?.response?.data?.detail ?? "Falha ao criar a empresa.");
@@ -109,7 +142,48 @@ export default function EmpresasPage() {
           </div>
 
           <section className="mt-5 rounded-xl bg-white border border-navy-100 p-5 shadow-sm">
-            <h2 className="font-semibold text-navy-800">Nova empresa / unidade</h2>
+            <h2 className="font-semibold text-navy-800">Redes / negócios</h2>
+            <p className="mt-1 text-sm text-navy-500">
+              Agrupe as unidades por negócio (ex.: rede odontológica, pizzaria). A
+              visão de grupo consolida por rede.
+            </p>
+            <form onSubmit={criarRede} className="mt-3 grid gap-3 sm:grid-cols-3">
+              <input
+                value={novaRede}
+                onChange={(e) => setNovaRede(e.target.value)}
+                placeholder="Nome da rede"
+                required
+                className="rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
+              />
+              <input
+                value={novaRedeSegmento}
+                onChange={(e) => setNovaRedeSegmento(e.target.value)}
+                placeholder="Segmento (opcional)"
+                className="rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
+              />
+              <button
+                type="submit"
+                disabled={salvandoRede}
+                className="rounded-lg bg-navy-700 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800 disabled:opacity-60"
+              >
+                {salvandoRede ? "Salvando..." : "Adicionar rede"}
+              </button>
+            </form>
+            {redes.length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {redes.map((r) => (
+                  <span
+                    key={r.id}
+                    className="rounded-full bg-navy-50 px-3 py-1 text-xs font-medium text-navy-700"
+                  >
+                    {r.nome}
+                  </span>
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section className="mt-5 rounded-xl bg-white border border-navy-100 p-5 shadow-sm">
             <form onSubmit={criar} className="mt-3 grid gap-3 sm:grid-cols-2">
               <input
                 value={codigo}
@@ -148,6 +222,18 @@ export default function EmpresasPage() {
                 placeholder="% participação (opcional)"
                 className="rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
               />
+              <select
+                value={redeId}
+                onChange={(e) => setRedeId(e.target.value)}
+                className="rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
+              >
+                <option value="">Sem rede</option>
+                {redes.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.nome}
+                  </option>
+                ))}
+              </select>
               <button
                 type="submit"
                 disabled={salvando}
@@ -165,6 +251,7 @@ export default function EmpresasPage() {
                 <tr>
                   <th className="text-left font-semibold px-4 py-3">Código</th>
                   <th className="text-left font-semibold px-4 py-3">Nome</th>
+                  <th className="text-left font-semibold px-4 py-3">Rede</th>
                   <th className="text-left font-semibold px-4 py-3">Segmento</th>
                   <th className="text-left font-semibold px-4 py-3">%</th>
                   <th className="text-left font-semibold px-4 py-3">Status</th>
@@ -173,13 +260,13 @@ export default function EmpresasPage() {
               <tbody>
                 {carregando ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-navy-500">
+                    <td colSpan={6} className="px-4 py-6 text-center text-navy-500">
                       Carregando...
                     </td>
                   </tr>
                 ) : empresas.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-6 text-center text-navy-500">
+                    <td colSpan={6} className="px-4 py-6 text-center text-navy-500">
                       Nenhuma empresa cadastrada para este cliente.
                     </td>
                   </tr>
@@ -191,6 +278,9 @@ export default function EmpresasPage() {
                       </td>
                       <td className="px-4 py-3 text-navy-800">
                         {emp.nome_razao_social}
+                      </td>
+                      <td className="px-4 py-3 text-navy-600">
+                        {redes.find((r) => r.id === emp.rede_id)?.nome ?? "—"}
                       </td>
                       <td className="px-4 py-3 text-navy-600">
                         {emp.segmento ?? "—"}

@@ -37,7 +37,15 @@ type EmpresaGrupo = {
   margem_liquida: number | null;
 };
 
+type RedeOpcao = {
+  id: string | null;
+  nome: string;
+  unidades: number;
+};
+
 type RespostaGrupo = {
+  rede_selecionada: string | null;
+  redes: RedeOpcao[];
   total_unidades: number;
   unidades_com_dados: number;
   meses: MesGrupo[];
@@ -79,17 +87,21 @@ export default function GrupoPage() {
   const [dados, setDados] = useState<RespostaGrupo | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState("");
+  const [redeId, setRedeId] = useState("");
 
   useEffect(() => {
     setCarregando(true);
     setErro("");
     portalApi
-      .get<RespostaGrupo>("/dre/grupo")
+      .get<RespostaGrupo>("/dre/grupo", {
+        params: redeId ? { rede_id: redeId } : undefined,
+      })
       .then(({ data }) => setDados(data))
       .catch(() => setErro("Não foi possível carregar a visão do grupo."))
       .finally(() => setCarregando(false));
-  }, []);
+  }, [redeId]);
 
+  const redes = dados?.redes ?? [];
   const meses = dados?.meses ?? [];
   const empresas = dados?.empresas ?? [];
 
@@ -123,6 +135,25 @@ export default function GrupoPage() {
 
   return (
     <PortalShell titulo="Visão do grupo">
+      {redes.length > 0 && (
+        <div className="mt-2 flex items-center gap-3">
+          <label className="text-sm font-medium text-navy-700">Rede:</label>
+          <select
+            value={redeId}
+            onChange={(e) => setRedeId(e.target.value)}
+            className="rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
+          >
+            <option value="">Todos os negócios</option>
+            {redes
+              .filter((r) => r.id != null)
+              .map((r) => (
+                <option key={r.id} value={r.id as string}>
+                  {r.nome} ({r.unidades})
+                </option>
+              ))}
+          </select>
+        </div>
+      )}
       {carregando ? (
         <p className="mt-6 text-navy-500">Carregando...</p>
       ) : erro ? (
