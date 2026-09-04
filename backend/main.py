@@ -65,11 +65,13 @@ from routes.auth import router as auth_router
 from routes.admin_auth import router as admin_auth_router
 from routes.admin_clientes import router as admin_clientes_router
 from routes.admin_empresas import router as admin_empresas_router
+from routes.admin_usuarios import router as admin_usuarios_router
 
 app.include_router(auth_router)
 app.include_router(admin_auth_router)
 app.include_router(admin_clientes_router)
 app.include_router(admin_empresas_router)
+app.include_router(admin_usuarios_router)
 
 
 @app.get("/")
