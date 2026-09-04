@@ -72,18 +72,21 @@ export default function EnvioDrePage() {
       const { data } = await portalApi.post<{
         status: string;
         gravados?: number;
-        ignorados_baixa?: string[];
+        sinalizados_baixa?: string[];
         divergencias?: string[];
         motivo?: string;
       }>(`/dre/uploads/${id}/processar`);
       if (data.status === "processado") {
-        setOk(`Processado com sucesso. ${data.gravados ?? 0} mês(es) gravado(s).`);
+        const partes = [
+          `Processado com sucesso. ${data.gravados ?? 0} mês(es) gravado(s).`,
+          data.sinalizados_baixa?.length
+            ? `Sinalizados para revisão (gravados): ${data.sinalizados_baixa.join(", ")}`
+            : "",
+        ].filter(Boolean);
+        setOk(partes.join(" "));
       } else {
         const partes = [
           data.motivo,
-          data.ignorados_baixa?.length
-            ? `Meses para revisão: ${data.ignorados_baixa.join(", ")}`
-            : "",
           data.divergencias?.length
             ? `Divergências: ${data.divergencias.join(" | ")}`
             : "",

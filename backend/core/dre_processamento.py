@@ -8,8 +8,9 @@ Fluxo por upload:
 
 GOVERNANÇA (regras do JOB):
   - NUNCA fabricar número: campo ausente = NULL (não consta), nunca 0.
-  - Mês com inconsistência contábil (confiabilidade 'baixa') NÃO é gravado —
-    é sinalizado para revisão manual (fail-safe contra desalinhamento).
+  - Mês com inconsistência contábil (confiabilidade 'baixa') É gravado, porém
+    SINALIZADO (confiabilidade='baixa' + observacao) — os valores vêm fiéis do
+    PDF; só a conferência interna não fechou. Nunca descarta dado legítimo.
   - Divergência com dado já gravado é SINALIZADA (nota em observacao), nunca
     sobrescreve silenciosamente os valores existentes.
 """
@@ -100,16 +101,11 @@ def processar_upload(upload: dict) -> dict:
         fonte += f" (unidade no arquivo: {resultado.unidade_texto})"
 
     gravados = 0
-    ignorados_baixa: list[str] = []
+    sinalizados_baixa: list[str] = []
     divergencias: list[str] = []
 
     for mes in resultado.meses:
         mes_iso = mes.mes_referencia.isoformat()
-
-        # Fail-safe: inconsistência contábil -> não grava, sinaliza p/ revisão.
-        if mes.confiabilidade == "baixa":
-            ignorados_baixa.append(mes_iso)
-            continue
 
         existente = (
             supabase.table("dre_consolidado")
@@ -141,6 +137,17 @@ def processar_upload(upload: dict) -> dict:
                 }).eq("id", atual["id"]).execute()
             continue  # linha já existe: idempotente (ou divergência já sinalizada)
 
+        # Grava-e-sinaliza: confiabilidade 'baixa' é gravada com flag + observacao.
+        obs_partes: list[str] = []
+        if mes.confiabilidade == "baixa":
+            sinalizados_baixa.append(mes_iso)
+            obs_partes.append(
+                "Confiabilidade BAIXA — conferência contábil não fechou; "
+                "valores conforme o PDF, revisar manualmente."
+            )
+        if mes.divergencias:
+            obs_partes.extend(mes.divergencias)
+
         registro = {
             "cliente_id": cliente_id,
             "empresa_id": empresa_id,
@@ -148,35 +155,32 @@ def processar_upload(upload: dict) -> dict:
             **{c: _num(mes.valores.get(c)) for c in _COLUNAS_MONETARIAS},
             "fonte": fonte,
             "confiabilidade": mes.confiabilidade,
-            "observacao": ("; ".join(mes.divergencias) if mes.divergencias else None),
+            "observacao": ("; ".join(obs_partes) if obs_partes else None),
         }
         supabase.table("dre_consolidado").insert(registro).execute()
         gravados += 1
 
-    partes: list[str] = []
-    if ignorados_baixa:
-        partes.append(
-            "Meses não gravados por inconsistência contábil (revisar manualmente): "
-            + ", ".join(ignorados_baixa)
-        )
     if divergencias:
-        partes.append(
+        detalhe = (
             "Divergências vs dados já gravados (mantidos, não sobrescritos): "
             + " | ".join(divergencias)
         )
-
-    if partes:
-        detalhe = " ".join(partes)
         _marcar_status(upload_id, "erro", detalhe)
         status = "erro"
     else:
-        _marcar_status(upload_id, "processado", None)
+        nota = None
+        if sinalizados_baixa:
+            nota = (
+                "Gravado com sinalização (revisar) — confiabilidade baixa: "
+                + ", ".join(sinalizados_baixa)
+            )
+        _marcar_status(upload_id, "processado", nota)
         status = "processado"
 
     return {
         "status": status,
         "gravados": gravados,
-        "ignorados_baixa": ignorados_baixa,
+        "sinalizados_baixa": sinalizados_baixa,
         "divergencias": divergencias,
         "meses_detectados": [m.mes_referencia.isoformat() for m in resultado.meses],
     }

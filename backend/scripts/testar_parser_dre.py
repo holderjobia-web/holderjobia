@@ -95,7 +95,7 @@ def main() -> int:
         for f in falhas:
             print(f"  - {f}")
         return 1
-    print("RESULTADO: TODOS OS CHECKS PASSARAM ✓")
+    print("RESULTADO: TODOS OS CHECKS PASSARAM [OK]")
     return 0
 
 

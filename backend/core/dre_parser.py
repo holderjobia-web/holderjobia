@@ -33,6 +33,11 @@ MESES_ABREV: dict[str, int] = {
     "JUL": 7, "AGO": 8, "SET": 9, "OUT": 10, "NOV": 11, "DEZ": 12,
 }
 
+MESES_EXTENSO: dict[str, int] = {
+    "JANEIRO": 1, "FEVEREIRO": 2, "MARCO": 3, "ABRIL": 4, "MAIO": 5, "JUNHO": 6,
+    "JULHO": 7, "AGOSTO": 8, "SETEMBRO": 9, "OUTUBRO": 10, "NOVEMBRO": 11, "DEZEMBRO": 12,
+}
+
 # Rótulo de âncora (normalizado) -> coluna de dre_consolidado.
 # São linhas de SUBTOTAL do demonstrativo (sem código de conta no início).
 ANCORAS: dict[str, str] = {
@@ -62,10 +67,18 @@ _TOLERANCIA = Decimal("0.05")
 
 # R$ 1.815.142,88  ->  captura "1.815.142,88" (com sinal opcional)
 _TOKEN_VALOR = re.compile(r"R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})")
-# JAN/26, FEV/26 ...
+# JAN/26, FEV/26 ... (matriz consolidada multi-mês)
 _TOKEN_MES = re.compile(r"\b([A-Z]{3})/(\d{2})\b")
+# JULHO/2026 ... (DRE mensal)
+_TOKEN_MES_EXTENSO = re.compile(
+    r"\b(JANEIRO|FEVEREIRO|MARCO|ABRIL|MAIO|JUNHO|JULHO|"
+    r"AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)/(\d{4})\b"
+)
 # Linha que começa com código de conta (linha analítica, não é subtotal)
 _INICIA_COM_CODIGO = re.compile(r"^\s*\d")
+
+# Rótulo auxiliar do DRE mensal (não vira coluna; usado para derivar IR/CSLL)
+_LABEL_LUCRO_ANTES_IR = "LUCRO ANTES DO IR / CSLL"
 
 
 # ---------------------------------------------------------------------------
@@ -132,8 +145,19 @@ def _extrair_meses(linhas: list[str]) -> list[date]:
     return []
 
 
+def _extrair_mes_extenso(linhas: list[str]) -> Optional[date]:
+    """Localiza o mês do DRE mensal (ex.: 'DRE CLINICA JULHO/2026')."""
+    for linha in linhas:
+        m = _TOKEN_MES_EXTENSO.search(_normalizar(linha))
+        if m:
+            mes = MESES_EXTENSO.get(m.group(1))
+            if mes:
+                return date(int(m.group(2)), mes, 1)
+    return None
+
+
 def _extrair_unidade(linhas: list[str]) -> Optional[str]:
-    """Primeiro texto não vazio antes do cabeçalho 'DEMONSTRATIVO...'.
+    """Primeiro texto não vazio antes do cabeçalho ('DEMONSTRATIVO...' ou 'DRE ...').
 
     Apenas informativo (rastreabilidade). NUNCA usado para escolher empresa_id
     — a empresa vem do formulário de upload.
@@ -143,7 +167,7 @@ def _extrair_unidade(linhas: list[str]) -> Optional[str]:
         if not s:
             continue
         norm = _normalizar(s)
-        if norm.startswith("DEMONSTRATIVO"):
+        if norm.startswith("DEMONSTRATIVO") or norm.startswith("DRE "):
             break
         if not _INICIA_COM_CODIGO.match(s):
             return s
@@ -299,6 +323,106 @@ def parsear_consolidado(texto: str) -> ResultadoParse:
 
 
 # ---------------------------------------------------------------------------
+# Adaptador: DRE mensal (formato normal — uma DRE por mês, colunas VALOR R$ + %)
+# ---------------------------------------------------------------------------
+
+def parsear_mensal(texto: str) -> ResultadoParse:
+    """Parseia um DRE de um único mês (ex.: 'DRE CLINICA JULHO/2026').
+
+    Nesse layout só as linhas de subtotal (âncoras) trazem 'R$'; as linhas
+    analíticas têm valor sem 'R$'. Cada âncora tem 1 valor + 1 percentual (o %
+    não é 'R$', então é ignorado).
+    """
+    linhas = texto.splitlines()
+    mes = _extrair_mes_extenso(linhas)
+    if mes is None:
+        return ResultadoParse(
+            ok=False,
+            motivo="Mês do DRE não encontrado (layout mensal não reconhecido).",
+        )
+
+    todas_colunas = set(ANCORAS.values())
+    valores: dict[str, Optional[Decimal]] = {col: None for col in todas_colunas}
+    lucro_antes_ir: Optional[Decimal] = None
+    ancoras_encontradas: set[str] = set()
+
+    for linha in linhas:
+        if _INICIA_COM_CODIGO.match(linha):
+            continue  # linha analítica (código de conta)
+        idx = linha.find("R$")
+        if idx == -1:
+            continue  # subtotais/âncoras sempre têm R$ neste layout
+        rotulo = _normalizar(linha[:idx])
+        vals = _valores_da_linha(linha[idx:])
+        if not vals:
+            continue
+        valor = vals[0]  # primeiro valor monetário (a coluna % não tem R$)
+        if rotulo == _LABEL_LUCRO_ANTES_IR:
+            lucro_antes_ir = valor
+            continue
+        coluna = ANCORAS.get(rotulo)
+        if coluna is None or coluna in ancoras_encontradas:
+            continue
+        valores[coluna] = valor
+        ancoras_encontradas.add(coluna)
+
+    # IR/CSLL raramente tem subtotal próprio no mensal; deriva da diferença de
+    # dois subtotais REPORTADOS (não fabrica: é lucro antes do IR − lucro líquido).
+    if (
+        valores.get("ir_csll") is None
+        and lucro_antes_ir is not None
+        and valores.get("lucro_liquido") is not None
+    ):
+        valores["ir_csll"] = lucro_antes_ir - valores["lucro_liquido"]  # type: ignore[operator]
+
+    if not (ANCORAS_ESSENCIAIS & ancoras_encontradas) == ANCORAS_ESSENCIAIS:
+        faltando = ANCORAS_ESSENCIAIS - ancoras_encontradas
+        return ResultadoParse(
+            ok=False,
+            ancoras_encontradas=ancoras_encontradas,
+            unidade_texto=_extrair_unidade(linhas),
+            motivo=(
+                "Âncoras essenciais não encontradas: "
+                + ", ".join(sorted(faltando))
+                + ". Layout mensal diferente — revisar manualmente."
+            ),
+        )
+
+    divergencias, confiabilidade = _validar_identidades(valores)
+    return ResultadoParse(
+        ok=True,
+        meses=[LinhaMensal(
+            mes_referencia=mes,
+            valores=valores,
+            divergencias=divergencias,
+            confiabilidade=confiabilidade,
+        )],
+        ancoras_encontradas=ancoras_encontradas,
+        unidade_texto=_extrair_unidade(linhas),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Detector de formato + despacho
+# ---------------------------------------------------------------------------
+
+def parsear(texto: str) -> ResultadoParse:
+    """Detecta o formato do DRE e despacha para o parser adequado.
+
+    Prioridade: matriz consolidada multi-mês (melhor fonte) > DRE mensal.
+    """
+    linhas = texto.splitlines()
+    if _extrair_meses(linhas):
+        return parsear_consolidado(texto)
+    if _extrair_mes_extenso(linhas):
+        return parsear_mensal(texto)
+    return ResultadoParse(
+        ok=False,
+        motivo="Formato de DRE não reconhecido (nem consolidado multi-mês, nem mensal).",
+    )
+
+
+# ---------------------------------------------------------------------------
 # Extração de texto do PDF (isola a dependência do pdfplumber)
 # ---------------------------------------------------------------------------
 
@@ -317,5 +441,5 @@ def extrair_texto_pdf(conteudo: bytes) -> str:
 
 
 def parsear_pdf(conteudo: bytes) -> ResultadoParse:
-    """Conveniência: extrai o texto do PDF e parseia a matriz consolidada."""
-    return parsear_consolidado(extrair_texto_pdf(conteudo))
+    """Conveniência: extrai o texto do PDF e detecta o formato automaticamente."""
+    return parsear(extrair_texto_pdf(conteudo))
