@@ -298,7 +298,7 @@ async def consolidado_grupo(
 
     emp_res = (
         supabase.table("empresas")
-        .select("id, codigo, nome")
+        .select("id, codigo, nome_razao_social")
         .eq("cliente_id", cliente_id)
         .execute()
     )
@@ -334,7 +334,7 @@ async def consolidado_grupo(
         empresas.append({
             "empresa_id": emp_id,
             "codigo": info.get("codigo"),
-            "nome": info.get("nome"),
+            "nome": info.get("nome_razao_social"),
             "meses": len(ls),
             "receita_liquida": receita_liq,
             "lucro_liquido": lucro,
