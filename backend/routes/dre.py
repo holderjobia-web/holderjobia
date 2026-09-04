@@ -252,3 +252,101 @@ async def consolidado(
     res = query.order("mes_referencia").execute()
     meses = [_com_indicadores(linha) for linha in (res.data or [])]
     return {"empresa_id": empresa_id, "meses": meses}
+
+
+_COLUNAS_MONET = (
+    "receita_bruta", "impostos", "devolucoes", "receita_liquida",
+    "custo_servico_vendido", "despesas_operacionais", "resultado_operacional",
+    "despesas_financeiras", "ir_csll", "lucro_liquido", "retirada",
+)
+
+
+def _somar(linhas: list[dict], coluna: str) -> float | None:
+    """Soma uma coluna entre unidades. NULL se nenhuma unidade tem o valor."""
+    presentes = [v for l in linhas if (v := _f(l.get(coluna))) is not None]
+    return round(sum(presentes), 2) if presentes else None
+
+
+def _agregar_mes(mes_iso: str | None, linhas: list[dict]) -> dict:
+    """Soma as unidades de um mês e deriva as margens sobre o agregado."""
+    valores = {c: _somar(linhas, c) for c in _COLUNAS_MONET}
+    receita_liquida = valores["receita_liquida"]
+    custo = valores["custo_servico_vendido"]
+    mc_base = (
+        receita_liquida - custo
+        if receita_liquida is not None and custo is not None
+        else None
+    )
+    return {
+        "mes_referencia": mes_iso,
+        **valores,
+        "margem_liquida": _pct(valores["lucro_liquido"], receita_liquida),
+        "margem_operacional": _pct(valores["resultado_operacional"], receita_liquida),
+        "margem_contribuicao": _pct(mc_base, receita_liquida),
+        "unidades": len(linhas),  # base do agregado (nº de DREs somadas no mês)
+    }
+
+
+@router.get("/grupo")
+async def consolidado_grupo(
+    de: str | None = Query(None, description="mês inicial AAAA-MM"),
+    ate: str | None = Query(None, description="mês final AAAA-MM"),
+    usuario: dict = Depends(usuario_atual),
+):
+    """Visão holding: soma todas as unidades do cliente por mês + comparativo."""
+    cliente_id = usuario["cliente_id"]
+
+    emp_res = (
+        supabase.table("empresas")
+        .select("id, codigo, nome")
+        .eq("cliente_id", cliente_id)
+        .execute()
+    )
+    empresas_map = {e["id"]: e for e in (emp_res.data or [])}
+
+    query = (
+        supabase.table("dre_consolidado")
+        .select("empresa_id, " + ", ".join(_COLUNAS_DRE))
+        .eq("cliente_id", cliente_id)
+    )
+    de_iso = _normalizar_mes(de)
+    ate_iso = _normalizar_mes(ate)
+    if de_iso:
+        query = query.gte("mes_referencia", de_iso)
+    if ate_iso:
+        query = query.lte("mes_referencia", ate_iso)
+    res = query.order("mes_referencia").execute()
+    linhas = res.data or []
+
+    por_mes: dict[str, list[dict]] = {}
+    por_empresa: dict[str, list[dict]] = {}
+    for linha in linhas:
+        por_mes.setdefault(linha.get("mes_referencia"), []).append(linha)
+        por_empresa.setdefault(linha.get("empresa_id"), []).append(linha)
+
+    meses = [_agregar_mes(mes, por_mes[mes]) for mes in sorted(por_mes)]
+
+    empresas = []
+    for emp_id, ls in por_empresa.items():
+        info = empresas_map.get(emp_id, {})
+        receita_liq = _somar(ls, "receita_liquida")
+        lucro = _somar(ls, "lucro_liquido")
+        empresas.append({
+            "empresa_id": emp_id,
+            "codigo": info.get("codigo"),
+            "nome": info.get("nome"),
+            "meses": len(ls),
+            "receita_liquida": receita_liq,
+            "lucro_liquido": lucro,
+            "retirada": _somar(ls, "retirada"),
+            "margem_liquida": _pct(lucro, receita_liq),
+        })
+    empresas.sort(key=lambda e: (e["receita_liquida"] or 0), reverse=True)
+
+    return {
+        "cliente_id": cliente_id,
+        "total_unidades": len(empresas_map),
+        "unidades_com_dados": len(por_empresa),
+        "meses": meses,
+        "empresas": empresas,
+    }

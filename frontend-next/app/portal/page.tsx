@@ -21,6 +21,11 @@ const CARDS = [
     titulo: "Dashboards",
     descricao: "Indicadores consolidados das suas empresas.",
   },
+  {
+    href: "/portal/grupo",
+    titulo: "Visão do grupo",
+    descricao: "Consolidado de todas as unidades e comparativo entre elas.",
+  },
 ];
 
 export default function PortalDashboard() {
@@ -41,7 +46,7 @@ export default function PortalDashboard() {
         {carregando ? "Carregando..." : `Bem-vindo, ${nome}.`}
       </p>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-3">
+      <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {CARDS.map((card) => (
           <Link
             key={card.titulo}
