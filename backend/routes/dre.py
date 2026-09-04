@@ -197,6 +197,11 @@ def _pct(numerador: float | None, base: float | None) -> float | None:
     return round(numerador / base * 100, 2)
 
 
+def _brl(v: float) -> str:
+    """Formata um valor em reais no padrão brasileiro (R$ 1.234,56)."""
+    return "R$ " + f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
 def _com_indicadores(linha: dict) -> dict:
     """Normaliza valores monetários em float e adiciona margens derivadas.
 
@@ -386,4 +391,151 @@ async def consolidado_grupo(
         "unidades_com_dados": len(por_empresa),
         "meses": meses,
         "empresas": empresas,
+    }
+
+
+@router.get("/distribuicao")
+async def distribuicao_lucros(
+    de: str | None = Query(None, description="mês inicial AAAA-MM"),
+    ate: str | None = Query(None, description="mês final AAAA-MM"),
+    rede_id: str | None = Query(None, description="filtra por rede; ausente = todas"),
+    usuario: dict = Depends(usuario_atual),
+):
+    """Distribuição de lucros DERIVADA: retirada da DRE × % de cada sócio.
+
+    Nada é gravado — o valor por sócio é sempre recalculado. Quando a soma das
+    participações de uma empresa não fecha 100%, ou a retirada não consta, ou
+    não há participação cadastrada, isso é SINALIZADO em `alertas`, nunca
+    "ajustado".
+    """
+    cliente_id = usuario["cliente_id"]
+
+    emp_res = (
+        supabase.table("empresas")
+        .select("id, codigo, nome_razao_social, rede_id")
+        .eq("cliente_id", cliente_id)
+        .execute()
+    )
+    empresas = [
+        e for e in (emp_res.data or [])
+        if not rede_id or e.get("rede_id") == rede_id
+    ]
+    empresas_map = {e["id"]: e for e in empresas}
+    ids = list(empresas_map.keys()) or ["00000000-0000-0000-0000-000000000000"]
+
+    # Retirada somada por empresa no período (NULL = não consta)
+    dre_q = (
+        supabase.table("dre_consolidado")
+        .select("empresa_id, retirada")
+        .eq("cliente_id", cliente_id)
+        .in_("empresa_id", ids)
+    )
+    de_iso = _normalizar_mes(de)
+    ate_iso = _normalizar_mes(ate)
+    if de_iso:
+        dre_q = dre_q.gte("mes_referencia", de_iso)
+    if ate_iso:
+        dre_q = dre_q.lte("mes_referencia", ate_iso)
+    dre_rows = dre_q.execute().data or []
+
+    linhas_por_empresa: dict[str, list[dict]] = {}
+    for row in dre_rows:
+        linhas_por_empresa.setdefault(row["empresa_id"], []).append(row)
+    retirada_por_empresa: dict[str, float | None] = {
+        eid: _somar(rows, "retirada") for eid, rows in linhas_por_empresa.items()
+    }
+
+    # Participações do cliente (com nome do sócio)
+    part_res = (
+        supabase.table("participacao_societaria")
+        .select("empresa_id, socio_id, percentual, socios(nome)")
+        .eq("cliente_id", cliente_id)
+        .in_("empresa_id", ids)
+        .execute()
+    )
+    part_por_empresa: dict[str, list[dict]] = {}
+    for p in part_res.data or []:
+        part_por_empresa.setdefault(p["empresa_id"], []).append(p)
+
+    alertas: list[str] = []
+    empresas_out: list[dict] = []
+    # Acumulador por sócio (consolidado do grupo/rede)
+    socios_acc: dict[str, dict] = {}
+
+    for eid, info in empresas_map.items():
+        rotulo = info.get("codigo") or info.get("nome_razao_social") or "unidade"
+        retirada = retirada_por_empresa.get(eid)
+        parts = part_por_empresa.get(eid, [])
+        soma_pct = round(
+            sum(_f(p.get("percentual")) or 0 for p in parts), 2
+        )
+        fecha_100 = bool(parts) and abs(soma_pct - 100) <= 0.01
+
+        distribuicao = []
+        for p in parts:
+            pct = _f(p.get("percentual"))
+            nome = (p.get("socios") or {}).get("nome")
+            valor = (
+                round(retirada * pct / 100, 2)
+                if retirada is not None and pct is not None
+                else None
+            )
+            distribuicao.append({
+                "socio_id": p["socio_id"],
+                "socio_nome": nome,
+                "percentual": pct,
+                "valor": valor,
+            })
+            acc = socios_acc.setdefault(
+                p["socio_id"],
+                {"socio_id": p["socio_id"], "socio_nome": nome, "valor_distribuido": None, "empresas": []},
+            )
+            if valor is not None:
+                acc["valor_distribuido"] = round((acc["valor_distribuido"] or 0) + valor, 2)
+            acc["empresas"].append({
+                "empresa_id": eid,
+                "codigo": info.get("codigo"),
+                "nome": info.get("nome_razao_social"),
+                "percentual": pct,
+                "retirada_empresa": retirada,
+                "valor": valor,
+            })
+
+        # Sinalizações de governança (nunca corrige, só avisa)
+        if not parts and retirada:
+            alertas.append(
+                f"{rotulo}: retirada de {_brl(retirada)} sem participação societária cadastrada."
+            )
+        elif parts and not fecha_100:
+            alertas.append(
+                f"{rotulo}: a soma das participações é {soma_pct:.2f}% (não fecha 100%)."
+            )
+        if parts and retirada is None:
+            alertas.append(f"{rotulo}: retirada não consta no período.")
+
+        empresas_out.append({
+            "empresa_id": eid,
+            "codigo": info.get("codigo"),
+            "nome": info.get("nome_razao_social"),
+            "rede_id": info.get("rede_id"),
+            "retirada_total": retirada,
+            "soma_percentual": soma_pct,
+            "soma_fecha_100": fecha_100,
+            "tem_participacao": bool(parts),
+            "distribuicao": distribuicao,
+        })
+
+    empresas_out.sort(key=lambda e: (e["retirada_total"] or 0), reverse=True)
+    socios = sorted(
+        socios_acc.values(),
+        key=lambda s: (s["valor_distribuido"] or 0),
+        reverse=True,
+    )
+
+    return {
+        "cliente_id": cliente_id,
+        "rede_selecionada": rede_id,
+        "socios": socios,
+        "empresas": empresas_out,
+        "alertas": alertas,
     }
