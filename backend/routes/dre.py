@@ -416,8 +416,25 @@ async def distribuicao_lucros(
         .eq("cliente_id", cliente_id)
         .execute()
     )
+    todas_empresas = emp_res.data or []
+
+    redes_res = (
+        supabase.table("redes")
+        .select("id, nome")
+        .eq("cliente_id", cliente_id)
+        .order("nome")
+        .execute()
+    )
+    contagem: dict[str | None, int] = {}
+    for e in todas_empresas:
+        contagem[e.get("rede_id")] = contagem.get(e.get("rede_id"), 0) + 1
+    redes = [
+        {"id": r["id"], "nome": r["nome"], "unidades": contagem.get(r["id"], 0)}
+        for r in (redes_res.data or [])
+    ]
+
     empresas = [
-        e for e in (emp_res.data or [])
+        e for e in todas_empresas
         if not rede_id or e.get("rede_id") == rede_id
     ]
     empresas_map = {e["id"]: e for e in empresas}
@@ -535,6 +552,7 @@ async def distribuicao_lucros(
     return {
         "cliente_id": cliente_id,
         "rede_selecionada": rede_id,
+        "redes": redes,
         "socios": socios,
         "empresas": empresas_out,
         "alertas": alertas,
