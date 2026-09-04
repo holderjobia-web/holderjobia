@@ -20,6 +20,11 @@ export default function ClientesPage() {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [editNome, setEditNome] = useState("");
+  const [editCnpj, setEditCnpj] = useState("");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
   async function carregar() {
     setCarregando(true);
     try {
@@ -52,6 +57,48 @@ export default function ClientesPage() {
       setErro(err?.response?.data?.detail ?? "Falha ao criar o cliente.");
     } finally {
       setSalvando(false);
+    }
+  }
+
+  function iniciarEdicao(c: Cliente) {
+    setEditandoId(c.id);
+    setEditNome(c.nome);
+    setEditCnpj(c.cnpj ?? "");
+    setErro("");
+  }
+
+  function cancelarEdicao() {
+    setEditandoId(null);
+  }
+
+  async function salvarEdicao(c: Cliente) {
+    if (editNome.trim().length < 2) {
+      setErro("O nome do cliente precisa ter ao menos 2 caracteres.");
+      return;
+    }
+    setSalvandoEdicao(true);
+    setErro("");
+    try {
+      await adminApi.patch(`/admin/clientes/${c.id}`, {
+        nome: editNome.trim(),
+        cnpj: editCnpj.trim() || null,
+      });
+      setEditandoId(null);
+      await carregar();
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao salvar o cliente.");
+    } finally {
+      setSalvandoEdicao(false);
+    }
+  }
+
+  async function alternarAtivo(c: Cliente) {
+    setErro("");
+    try {
+      await adminApi.patch(`/admin/clientes/${c.id}`, { ativo: !c.ativo });
+      await carregar();
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao alterar o status.");
     }
   }
 
@@ -92,39 +139,102 @@ export default function ClientesPage() {
               <th className="text-left font-semibold px-4 py-3">Nome</th>
               <th className="text-left font-semibold px-4 py-3">CNPJ</th>
               <th className="text-left font-semibold px-4 py-3">Status</th>
+              <th className="text-right font-semibold px-4 py-3">Ações</th>
             </tr>
           </thead>
           <tbody>
             {carregando ? (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-center text-navy-500">
+                <td colSpan={4} className="px-4 py-6 text-center text-navy-500">
                   Carregando...
                 </td>
               </tr>
             ) : clientes.length === 0 ? (
               <tr>
-                <td colSpan={3} className="px-4 py-6 text-center text-navy-500">
+                <td colSpan={4} className="px-4 py-6 text-center text-navy-500">
                   Nenhum cliente cadastrado ainda.
                 </td>
               </tr>
             ) : (
-              clientes.map((c) => (
-                <tr key={c.id} className="border-t border-navy-100">
-                  <td className="px-4 py-3 text-navy-800 font-medium">{c.nome}</td>
-                  <td className="px-4 py-3 text-navy-600">{c.cnpj ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                        c.ativo
-                          ? "bg-moss-100 text-moss-800"
-                          : "bg-navy-100 text-navy-600"
-                      }`}
-                    >
-                      {c.ativo ? "Ativo" : "Inativo"}
-                    </span>
-                  </td>
-                </tr>
-              ))
+              clientes.map((c) => {
+                const emEdicao = editandoId === c.id;
+                return (
+                  <tr key={c.id} className="border-t border-navy-100">
+                    <td className="px-4 py-3 text-navy-800 font-medium">
+                      {emEdicao ? (
+                        <input
+                          value={editNome}
+                          onChange={(e) => setEditNome(e.target.value)}
+                          className="w-full rounded-lg border border-navy-200 px-2 py-1 text-sm outline-none focus:border-moss-500"
+                        />
+                      ) : (
+                        c.nome
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-navy-600">
+                      {emEdicao ? (
+                        <input
+                          value={editCnpj}
+                          onChange={(e) => setEditCnpj(e.target.value)}
+                          placeholder="CNPJ"
+                          className="w-full rounded-lg border border-navy-200 px-2 py-1 text-sm outline-none focus:border-moss-500"
+                        />
+                      ) : (
+                        c.cnpj ?? "—"
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${
+                          c.ativo
+                            ? "bg-moss-100 text-moss-800"
+                            : "bg-navy-100 text-navy-600"
+                        }`}
+                      >
+                        {c.ativo ? "Ativo" : "Inativo"}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {emEdicao ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => salvarEdicao(c)}
+                            disabled={salvandoEdicao}
+                            className="rounded-lg bg-moss-600 px-3 py-1 text-xs font-semibold text-white hover:bg-moss-700 disabled:opacity-60"
+                          >
+                            {salvandoEdicao ? "Salvando..." : "Salvar"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelarEdicao}
+                            className="ml-2 rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+                          >
+                            Cancelar
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => iniciarEdicao(c)}
+                            className="rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-700 hover:bg-navy-50"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => alternarAtivo(c)}
+                            className="ml-2 rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-700 hover:bg-navy-50"
+                          >
+                            {c.ativo ? "Inativar" : "Ativar"}
+                          </button>
+                        </>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>

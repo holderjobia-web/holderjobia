@@ -6,7 +6,7 @@ import { adminApi } from "@/lib/admin-api";
 
 type Cliente = { id: string; nome: string };
 
-type Rede = { id: string; nome: string; segmento: string | null };
+type Rede = { id: string; nome: string; segmento: string | null; ativo: boolean };
 
 type Empresa = {
   id: string;
@@ -40,10 +40,18 @@ export default function EmpresasPage() {
   const [salvandoRede, setSalvandoRede] = useState(false);
 
   const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [editCodigo, setEditCodigo] = useState("");
   const [editNome, setEditNome] = useState("");
+  const [editCnpj, setEditCnpj] = useState("");
   const [editSegmento, setEditSegmento] = useState("");
+  const [editParticipacao, setEditParticipacao] = useState("");
   const [editRedeId, setEditRedeId] = useState("");
   const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+
+  const [redeEditandoId, setRedeEditandoId] = useState<string | null>(null);
+  const [redeEditNome, setRedeEditNome] = useState("");
+  const [redeEditSegmento, setRedeEditSegmento] = useState("");
+  const [salvandoRedeEdicao, setSalvandoRedeEdicao] = useState(false);
 
   useEffect(() => {
     adminApi
@@ -126,8 +134,13 @@ export default function EmpresasPage() {
 
   function iniciarEdicao(emp: Empresa) {
     setEditandoId(emp.id);
+    setEditCodigo(emp.codigo);
     setEditNome(emp.nome_razao_social);
+    setEditCnpj(emp.cnpj ?? "");
     setEditSegmento(emp.segmento ?? "");
+    setEditParticipacao(
+      emp.percentual_participacao != null ? String(emp.percentual_participacao) : ""
+    );
     setEditRedeId(emp.rede_id ?? "");
     setErro("");
   }
@@ -137,6 +150,10 @@ export default function EmpresasPage() {
   }
 
   async function salvarEdicao(emp: Empresa) {
+    if (!editCodigo.trim()) {
+      setErro("O código da empresa não pode ficar em branco.");
+      return;
+    }
     if (!editNome.trim()) {
       setErro("O nome da empresa não pode ficar em branco.");
       return;
@@ -145,8 +162,11 @@ export default function EmpresasPage() {
     setErro("");
     try {
       await adminApi.patch(`/admin/empresas/${emp.id}`, {
+        codigo: editCodigo.trim(),
         nome_razao_social: editNome.trim(),
+        cnpj: editCnpj.trim() || null,
         segmento: editSegmento.trim() || null,
+        percentual_participacao: editParticipacao ? Number(editParticipacao) : null,
         rede_id: editRedeId || null,
       });
       setEditandoId(null);
@@ -189,8 +209,49 @@ export default function EmpresasPage() {
     }
   }
 
-  async function excluirRede(rede: Rede) {
-    const aviso =
+  function iniciarEdicaoRede(rede: Rede) {
+    setRedeEditandoId(rede.id);
+    setRedeEditNome(rede.nome);
+    setRedeEditSegmento(rede.segmento ?? "");
+    setErro("");
+  }
+
+  function cancelarEdicaoRede() {
+    setRedeEditandoId(null);
+  }
+
+  async function salvarEdicaoRede(rede: Rede) {
+    if (!redeEditNome.trim()) {
+      setErro("O nome da rede não pode ficar em branco.");
+      return;
+    }
+    setSalvandoRedeEdicao(true);
+    setErro("");
+    try {
+      await adminApi.patch(`/admin/redes/${rede.id}`, {
+        nome: redeEditNome.trim(),
+        segmento: redeEditSegmento.trim() || null,
+      });
+      setRedeEditandoId(null);
+      await carregarEmpresas(clienteId);
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao salvar a rede.");
+    } finally {
+      setSalvandoRedeEdicao(false);
+    }
+  }
+
+  async function alternarAtivoRede(rede: Rede) {
+    setErro("");
+    try {
+      await adminApi.patch(`/admin/redes/${rede.id}`, { ativo: !rede.ativo });
+      await carregarEmpresas(clienteId);
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao alterar o status da rede.");
+    }
+  }
+
+  async function excluirRede(rede: Rede) {    const aviso =
       `Excluir a rede/negócio "${rede.nome}"?\n\n` +
       "As empresas vinculadas continuam existindo, mas ficam sem rede. " +
       "Esta ação não tem volta.";
@@ -256,24 +317,90 @@ export default function EmpresasPage() {
               </button>
             </form>
             {redes.length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {redes.map((r) => (
-                  <span
-                    key={r.id}
-                    className="inline-flex items-center gap-2 rounded-full bg-navy-50 px-3 py-1 text-xs font-medium text-navy-700"
-                  >
-                    {r.nome}
-                    <button
-                      type="button"
-                      onClick={() => excluirRede(r)}
-                      title="Excluir rede"
-                      className="text-navy-400 hover:text-red-600"
+              <ul className="mt-3 divide-y divide-navy-100 rounded-lg border border-navy-100">
+                {redes.map((r) => {
+                  const emEdicao = redeEditandoId === r.id;
+                  return (
+                    <li
+                      key={r.id}
+                      className="flex flex-wrap items-center gap-3 px-3 py-2"
                     >
-                      ×
-                    </button>
-                  </span>
-                ))}
-              </div>
+                      {emEdicao ? (
+                        <>
+                          <input
+                            value={redeEditNome}
+                            onChange={(e) => setRedeEditNome(e.target.value)}
+                            placeholder="Nome da rede"
+                            className="rounded-lg border border-navy-200 px-2 py-1 text-sm outline-none focus:border-moss-500"
+                          />
+                          <input
+                            value={redeEditSegmento}
+                            onChange={(e) => setRedeEditSegmento(e.target.value)}
+                            placeholder="Segmento"
+                            className="rounded-lg border border-navy-200 px-2 py-1 text-sm outline-none focus:border-moss-500"
+                          />
+                          <div className="ml-auto flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => salvarEdicaoRede(r)}
+                              disabled={salvandoRedeEdicao}
+                              className="rounded-lg bg-moss-600 px-3 py-1 text-xs font-semibold text-white hover:bg-moss-700 disabled:opacity-60"
+                            >
+                              {salvandoRedeEdicao ? "Salvando..." : "Salvar"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={cancelarEdicaoRede}
+                              className="rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <span className="text-sm font-medium text-navy-800">
+                            {r.nome}
+                          </span>
+                          {r.segmento && (
+                            <span className="text-xs text-navy-500">
+                              {r.segmento}
+                            </span>
+                          )}
+                          {!r.ativo && (
+                            <span className="rounded-full bg-navy-100 px-2 py-0.5 text-xs font-medium text-navy-600">
+                              Inativa
+                            </span>
+                          )}
+                          <div className="ml-auto flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => iniciarEdicaoRede(r)}
+                              className="rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-700 hover:bg-navy-50"
+                            >
+                              Editar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => alternarAtivoRede(r)}
+                              className="rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-700 hover:bg-navy-50"
+                            >
+                              {r.ativo ? "Inativar" : "Ativar"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => excluirRede(r)}
+                              className="rounded-lg border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                            >
+                              Excluir
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
             )}
           </section>
 
@@ -371,15 +498,32 @@ export default function EmpresasPage() {
                     return (
                       <tr key={emp.id} className="border-t border-navy-100">
                         <td className="px-4 py-3 text-navy-800 font-medium">
-                          {emp.codigo}
+                          {emEdicao ? (
+                            <input
+                              value={editCodigo}
+                              onChange={(e) => setEditCodigo(e.target.value)}
+                              className="w-24 rounded-lg border border-navy-200 px-2 py-1 text-sm outline-none focus:border-moss-500"
+                            />
+                          ) : (
+                            emp.codigo
+                          )}
                         </td>
                         <td className="px-4 py-3 text-navy-800">
                           {emEdicao ? (
-                            <input
-                              value={editNome}
-                              onChange={(e) => setEditNome(e.target.value)}
-                              className="w-full rounded-lg border border-navy-200 px-2 py-1 text-sm outline-none focus:border-moss-500"
-                            />
+                            <div className="flex flex-col gap-1">
+                              <input
+                                value={editNome}
+                                onChange={(e) => setEditNome(e.target.value)}
+                                placeholder="Nome / razão social"
+                                className="w-full rounded-lg border border-navy-200 px-2 py-1 text-sm outline-none focus:border-moss-500"
+                              />
+                              <input
+                                value={editCnpj}
+                                onChange={(e) => setEditCnpj(e.target.value)}
+                                placeholder="CNPJ (opcional)"
+                                className="w-full rounded-lg border border-navy-200 px-2 py-1 text-xs outline-none focus:border-moss-500"
+                              />
+                            </div>
                           ) : (
                             emp.nome_razao_social
                           )}
@@ -414,9 +558,21 @@ export default function EmpresasPage() {
                           )}
                         </td>
                         <td className="px-4 py-3 text-navy-600">
-                          {emp.percentual_participacao != null
-                            ? `${emp.percentual_participacao}%`
-                            : "—"}
+                          {emEdicao ? (
+                            <input
+                              value={editParticipacao}
+                              onChange={(e) => setEditParticipacao(e.target.value)}
+                              type="number"
+                              min={0}
+                              max={100}
+                              step="0.01"
+                              className="w-20 rounded-lg border border-navy-200 px-2 py-1 text-sm outline-none focus:border-moss-500"
+                            />
+                          ) : emp.percentual_participacao != null ? (
+                            `${emp.percentual_participacao}%`
+                          ) : (
+                            "—"
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <span
