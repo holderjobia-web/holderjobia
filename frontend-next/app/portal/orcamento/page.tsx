@@ -69,6 +69,41 @@ function numOuNull(v: string): number | null {
   return t === "" ? null : Number(t);
 }
 
+// converte um valor já salvo (pode ter centavos de digitação antiga) p/ dígitos inteiros da máscara
+function paraDigitos(v: number | null): string {
+  return v != null ? String(Math.round(v)) : "";
+}
+
+// campo de valor em reais: guarda só dígitos (reais inteiros) e exibe formatado com separador de milhar
+function CampoMoeda({
+  value,
+  onChange,
+  placeholder,
+  className = "",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const exibicao = value ? Number(value).toLocaleString("pt-BR") : "";
+  return (
+    <div
+      className={`flex items-center gap-1 rounded-lg text-sm text-navy-800 focus-within:border-moss-500 ${className}`}
+    >
+      <span className="text-navy-400">R$</span>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={exibicao}
+        onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
+        placeholder={placeholder}
+        className="w-full min-w-0 bg-transparent text-right outline-none"
+      />
+    </div>
+  );
+}
+
 export default function OrcamentoPage() {
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [empresaId, setEmpresaId] = useState("");
@@ -163,9 +198,9 @@ export default function OrcamentoPage() {
 
   function iniciarEdicao(m: Orcamento) {
     setEditandoId(m.id);
-    setEditReceita(m.receita_liquida != null ? String(m.receita_liquida) : "");
-    setEditLucro(m.lucro_liquido != null ? String(m.lucro_liquido) : "");
-    setEditRetirada(m.retirada != null ? String(m.retirada) : "");
+    setEditReceita(paraDigitos(m.receita_liquida));
+    setEditLucro(paraDigitos(m.lucro_liquido));
+    setEditRetirada(paraDigitos(m.retirada));
     setErro("");
     setOk("");
   }
@@ -255,29 +290,23 @@ export default function OrcamentoPage() {
                 required
                 className="rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
               />
-              <input
-                type="number"
-                step="0.01"
+              <CampoMoeda
                 value={receita}
-                onChange={(e) => setReceita(e.target.value)}
+                onChange={setReceita}
                 placeholder="Receita líquida"
-                className="rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
+                className="border border-navy-100 px-3 py-2"
               />
-              <input
-                type="number"
-                step="0.01"
+              <CampoMoeda
                 value={lucro}
-                onChange={(e) => setLucro(e.target.value)}
+                onChange={setLucro}
                 placeholder="Lucro líquido"
-                className="rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
+                className="border border-navy-100 px-3 py-2"
               />
-              <input
-                type="number"
-                step="0.01"
+              <CampoMoeda
                 value={retirada}
-                onChange={(e) => setRetirada(e.target.value)}
+                onChange={setRetirada}
                 placeholder="Retirada"
-                className="rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
+                className="border border-navy-100 px-3 py-2"
               />
               <button
                 type="submit"
@@ -320,12 +349,10 @@ export default function OrcamentoPage() {
                         </td>
                         <td className="px-4 py-3 text-right text-navy-700">
                           {emEdicao ? (
-                            <input
-                              type="number"
-                              step="0.01"
+                            <CampoMoeda
                               value={editReceita}
-                              onChange={(e) => setEditReceita(e.target.value)}
-                              className="w-28 rounded-lg border border-navy-200 px-2 py-1 text-sm text-right outline-none focus:border-moss-500"
+                              onChange={setEditReceita}
+                              className="w-28 border border-navy-200 px-2 py-1"
                             />
                           ) : (
                             moeda(m.receita_liquida)
@@ -333,12 +360,10 @@ export default function OrcamentoPage() {
                         </td>
                         <td className="px-4 py-3 text-right text-navy-700">
                           {emEdicao ? (
-                            <input
-                              type="number"
-                              step="0.01"
+                            <CampoMoeda
                               value={editLucro}
-                              onChange={(e) => setEditLucro(e.target.value)}
-                              className="w-28 rounded-lg border border-navy-200 px-2 py-1 text-sm text-right outline-none focus:border-moss-500"
+                              onChange={setEditLucro}
+                              className="w-28 border border-navy-200 px-2 py-1"
                             />
                           ) : (
                             moeda(m.lucro_liquido)
@@ -346,12 +371,10 @@ export default function OrcamentoPage() {
                         </td>
                         <td className="px-4 py-3 text-right text-navy-700">
                           {emEdicao ? (
-                            <input
-                              type="number"
-                              step="0.01"
+                            <CampoMoeda
                               value={editRetirada}
-                              onChange={(e) => setEditRetirada(e.target.value)}
-                              className="w-28 rounded-lg border border-navy-200 px-2 py-1 text-sm text-right outline-none focus:border-moss-500"
+                              onChange={setEditRetirada}
+                              className="w-28 border border-navy-200 px-2 py-1"
                             />
                           ) : (
                             moeda(m.retirada)
