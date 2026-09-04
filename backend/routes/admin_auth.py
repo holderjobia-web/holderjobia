@@ -11,7 +11,8 @@ O JWT admin carrega tipo="admin" para não ser aceito no contexto do portal.
 
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from postgrest.exceptions import APIError
 from pydantic import BaseModel
 
 from config import config
@@ -19,6 +20,11 @@ from core.auth import admin_atual
 from core.rate_limit import RateLimiter
 from core.security import criar_token, verificar_senha
 from supabase_client import supabase
+
+_BANCO_INDISPONIVEL = HTTPException(
+    status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+    detail="Serviço temporariamente indisponível. Tente novamente em instantes.",
+)
 
 router = APIRouter(prefix="/admin/auth", tags=["auth-admin"])
 
@@ -36,14 +42,17 @@ async def admin_login(request: Request, dados: AdminLoginRequest):
     _rate.verificar(ip)
 
     email = dados.email.lower().strip()
-    res = (
-        supabase.table("admins")
-        .select("*")
-        .eq("email", email)
-        .eq("ativo", True)
-        .limit(1)
-        .execute()
-    )
+    try:
+        res = (
+            supabase.table("admins")
+            .select("*")
+            .eq("email", email)
+            .eq("ativo", True)
+            .limit(1)
+            .execute()
+        )
+    except APIError:
+        raise _BANCO_INDISPONIVEL
 
     if not res.data:
         restantes = _rate.registrar_falha(ip)

@@ -14,6 +14,7 @@ O token é devolvido no body (o frontend decide como armazenar).
 from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from postgrest.exceptions import APIError
 from pydantic import BaseModel
 
 from config import config
@@ -98,14 +99,20 @@ async def login(request: Request, dados: LoginRequest):
     _rate.verificar(ip)
 
     email = dados.email.lower().strip()
-    res = (
-        supabase.table("usuarios")
-        .select("*")
-        .eq("email", email)
-        .eq("ativo", True)
-        .limit(1)
-        .execute()
-    )
+    try:
+        res = (
+            supabase.table("usuarios")
+            .select("*")
+            .eq("email", email)
+            .eq("ativo", True)
+            .limit(1)
+            .execute()
+        )
+    except APIError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Serviço temporariamente indisponível. Tente novamente em instantes.",
+        )
 
     if not res.data:
         restantes = _rate.registrar_falha(ip)
