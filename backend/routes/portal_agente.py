@@ -26,6 +26,10 @@ from supabase_client import supabase
 router = APIRouter(prefix="/agente", tags=["agente"])
 logger = logging.getLogger(__name__)
 
+# gpt-5.x (ex.: gpt-5.6-luna) são reasoning: não aceitam temperature/max_tokens,
+# usam max_completion_tokens (o raciocínio interno também consome desse teto).
+_PREFIXOS_REASONING = ("gpt-5",)
+
 _SYSTEM_PROMPT = """Você é o agente de inteligência financeira do holderjob, um SaaS de \
 CFO/BI para donos de grupos de empresas (redes de unidades/holdings).
 
@@ -113,12 +117,20 @@ async def perguntar(dados: PerguntaEntrada, usuario: dict = Depends(usuario_atua
 
     try:
         client = OpenAI(api_key=config.OPENAI_API_KEY)
-        resp = client.chat.completions.create(
-            model=config.OPENAI_CHAT_MODEL,
-            messages=mensagens,
-            temperature=0.4,
-            max_tokens=900,
-        )
+        modelo = config.OPENAI_CHAT_MODEL
+        if modelo.startswith(_PREFIXOS_REASONING):
+            resp = client.chat.completions.create(
+                model=modelo,
+                messages=mensagens,
+                max_completion_tokens=1500,
+            )
+        else:
+            resp = client.chat.completions.create(
+                model=modelo,
+                messages=mensagens,
+                temperature=0.4,
+                max_tokens=900,
+            )
         resposta = resp.choices[0].message.content or ""
     except Exception:
         logger.exception("Falha ao chamar OpenAI (cliente_id=%s)", cliente_id)

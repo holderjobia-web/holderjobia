@@ -78,9 +78,9 @@ class Config:
     JWT_ADMIN_SECRET: str = os.getenv("JWT_ADMIN_SECRET", "")
     JWT_EXPIRATION_HOURS: int = int(os.getenv("JWT_EXPIRATION_HOURS", "8"))
 
-    # OpenAI — agente de IA (fase futura)
+    # OpenAI — agente de IA (Etapa 7)
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    OPENAI_CHAT_MODEL: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+    OPENAI_CHAT_MODEL: str = os.getenv("OPENAI_CHAT_MODEL", "gpt-5.6-luna")
 
     # Servidor
     CORS_ORIGINS: list = parse_cors_origins()
