@@ -38,6 +38,7 @@ export default function EnvioDrePage() {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
   const [ok, setOk] = useState("");
+  const [processandoId, setProcessandoId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function carregarUploads() {
@@ -61,6 +62,40 @@ export default function EnvioDrePage() {
     if (!id) return "—";
     const emp = empresas.find((e) => e.id === id);
     return emp ? `${emp.codigo} — ${emp.nome_razao_social}` : "—";
+  }
+
+  async function processar(id: string) {
+    setErro("");
+    setOk("");
+    setProcessandoId(id);
+    try {
+      const { data } = await portalApi.post<{
+        status: string;
+        gravados?: number;
+        ignorados_baixa?: string[];
+        divergencias?: string[];
+        motivo?: string;
+      }>(`/dre/uploads/${id}/processar`);
+      if (data.status === "processado") {
+        setOk(`Processado com sucesso. ${data.gravados ?? 0} mês(es) gravado(s).`);
+      } else {
+        const partes = [
+          data.motivo,
+          data.ignorados_baixa?.length
+            ? `Meses para revisão: ${data.ignorados_baixa.join(", ")}`
+            : "",
+          data.divergencias?.length
+            ? `Divergências: ${data.divergencias.join(" | ")}`
+            : "",
+        ].filter(Boolean);
+        setErro(partes.join(" — ") || "Processamento concluído com pendências.");
+      }
+      await carregarUploads();
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao processar o arquivo.");
+    } finally {
+      setProcessandoId(null);
+    }
   }
 
   async function enviar(e: FormEvent) {
@@ -170,12 +205,13 @@ export default function EnvioDrePage() {
               <th className="text-left font-semibold px-4 py-3">Mês</th>
               <th className="text-left font-semibold px-4 py-3">Tamanho</th>
               <th className="text-left font-semibold px-4 py-3">Status</th>
+              <th className="text-left font-semibold px-4 py-3">Ações</th>
             </tr>
           </thead>
           <tbody>
             {uploads.length === 0 ? (
               <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-navy-500">
+                <td colSpan={6} className="px-4 py-6 text-center text-navy-500">
                   Nenhum DRE enviado ainda.
                 </td>
               </tr>
@@ -205,6 +241,20 @@ export default function EnvioDrePage() {
                       >
                         {st.texto}
                       </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => processar(u.id)}
+                        disabled={processandoId === u.id || u.status === "processando"}
+                        className="rounded-lg border border-moss-600 px-3 py-1 text-xs font-semibold text-moss-700 hover:bg-moss-50 disabled:opacity-50"
+                      >
+                        {processandoId === u.id
+                          ? "Processando..."
+                          : u.status === "processado"
+                            ? "Reprocessar"
+                            : "Processar"}
+                      </button>
                     </td>
                   </tr>
                 );
