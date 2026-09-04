@@ -31,6 +31,11 @@ const CARDS = [
     titulo: "Orçamento",
     descricao: "Defina metas por mês e compare o previsto com o realizado.",
   },
+  {
+    href: "/portal/agente",
+    titulo: "Agente IA",
+    descricao: "Converse com o agente sobre a saúde financeira das suas empresas.",
+  },
 ];
 
 export default function PortalDashboard() {

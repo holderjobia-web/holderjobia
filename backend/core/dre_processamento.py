@@ -21,7 +21,8 @@ from decimal import Decimal
 from typing import Optional
 
 from config import config
-from core.dre_parser import parsear_pdf
+from core.base_conhecimento import indexar_resumo_mes, indexar_texto_bruto
+from core.dre_parser import LinhaMensal, extrair_texto_pdf, parsear
 from supabase_client import supabase
 
 logger = logging.getLogger(__name__)
@@ -32,7 +33,39 @@ _COLUNAS_MONETARIAS = (
     "despesas_financeiras", "ir_csll", "lucro_liquido", "retirada",
 )
 
+_LABEL_MONETARIO = {
+    "receita_bruta": "Receita bruta",
+    "impostos": "Impostos e contribuições",
+    "devolucoes": "Devoluções",
+    "receita_liquida": "Receita líquida",
+    "custo_servico_vendido": "Custo do serviço prestado",
+    "despesas_operacionais": "Despesas operacionais",
+    "resultado_operacional": "Resultado operacional",
+    "despesas_financeiras": "Despesas financeiras",
+    "ir_csll": "IR/CSLL",
+    "lucro_liquido": "Lucro líquido",
+    "retirada": "Retirada dos sócios",
+}
+
 _TOL_COMPARACAO = Decimal("0.01")
+
+
+def _brl(v: Optional[Decimal]) -> str:
+    if v is None:
+        return "não consta"
+    s = f"{v:,.2f}"
+    return "R$ " + s.replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _resumo_mes(nome_empresa: str, mes_iso: str, mes: LinhaMensal) -> str:
+    """Texto narrativo (derivado, nunca fabricado) de 1 mês de DRE — indexado no RAG."""
+    linhas = [f"DRE de {nome_empresa} referente a {mes_iso}:"]
+    for coluna, rotulo in _LABEL_MONETARIO.items():
+        linhas.append(f"- {rotulo}: {_brl(mes.valores.get(coluna))}")
+    linhas.append(f"Confiabilidade da extração: {mes.confiabilidade}.")
+    if mes.divergencias:
+        linhas.append("Observações de conferência: " + "; ".join(mes.divergencias))
+    return "\n".join(linhas)
 
 
 def _num(v: Optional[Decimal]) -> Optional[float]:
@@ -86,7 +119,8 @@ def processar_upload(upload: dict) -> dict:
         return {"status": "erro", "motivo": "download"}
 
     try:
-        resultado = parsear_pdf(conteudo)
+        texto_pdf = extrair_texto_pdf(conteudo)
+        resultado = parsear(texto_pdf)
     except Exception:
         logger.exception("Falha ao parsear DRE (upload=%s)", upload_id)
         _marcar_status(upload_id, "erro", "Falha ao interpretar o PDF.")
@@ -99,6 +133,23 @@ def processar_upload(upload: dict) -> dict:
     fonte = f"DRE PDF: {upload.get('nome_arquivo') or storage_path}"
     if resultado.unidade_texto:
         fonte += f" (unidade no arquivo: {resultado.unidade_texto})"
+
+    empresa_nome = empresa_id
+    try:
+        emp = (
+            supabase.table("empresas")
+            .select("codigo,nome_razao_social")
+            .eq("id", empresa_id)
+            .limit(1)
+            .execute()
+        )
+        if emp.data:
+            empresa_nome = f"{emp.data[0]['codigo']} — {emp.data[0]['nome_razao_social']}"
+    except Exception:
+        logger.exception("Falha ao buscar nome da empresa p/ indexação RAG (empresa_id=%s)", empresa_id)
+
+    # RAG: indexa o texto bruto do PDF já validado (best-effort, não derruba o processamento)
+    indexar_texto_bruto(cliente_id, empresa_id, fonte, texto_pdf)
 
     gravados = 0
     sinalizados_baixa: list[str] = []
@@ -153,6 +204,9 @@ def processar_upload(upload: dict) -> dict:
         }
         supabase.table("dre_consolidado").insert(registro).execute()
         gravados += 1
+
+        # RAG: indexa o resumo textual do mês recém-gravado (derivado, nunca fabricado)
+        indexar_resumo_mes(cliente_id, empresa_id, mes_iso, _resumo_mes(empresa_nome, mes_iso, mes), fonte)
 
     if divergencias:
         detalhe = (

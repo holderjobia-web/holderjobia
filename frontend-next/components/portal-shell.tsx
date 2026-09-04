@@ -12,6 +12,7 @@ const NAV = [
   { href: "/portal/grupo", label: "Visão do grupo" },
   { href: "/portal/orcamento", label: "Orçamento" },
   { href: "/portal/socios", label: "Sócios & Distribuição" },
+  { href: "/portal/agente", label: "Agente IA" },
   { href: "/portal/empresas", label: "Minhas empresas" },
 ];
 
