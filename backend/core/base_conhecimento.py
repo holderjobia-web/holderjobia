@@ -118,10 +118,16 @@ def buscar_contexto(
     cliente_id: str,
     pergunta: str,
     empresa_id: Optional[str] = None,
-    limite: int = 6,
-    limiar: float = 0.55,
+    limite: int = 10,
+    limiar: float = 0.2,
 ) -> list[dict]:
-    """Busca os chunks mais relevantes p/ a pergunta (RAG), isolado por cliente_id."""
+    """Busca os chunks mais relevantes p/ a pergunta (RAG), isolado por cliente_id.
+
+    Limiar baixo (0.2) de propósito: o resumo indexado é texto estruturado
+    (rótulo + número), bem diferente em forma de uma pergunta em linguagem
+    natural, e a similaridade de cosseno entre os dois costuma ficar bem abaixo
+    de um limiar "intuitivo" tipo 0.5-0.55 mesmo quando o conteúdo é relevante.
+    """
     embedding = gerar_embedding(pergunta)
     resp = supabase.rpc("match_base_conhecimento", {
         "query_embedding": embedding,
@@ -131,6 +137,25 @@ def buscar_contexto(
         "match_count": limite,
     }).execute()
     return resp.data or []
+
+
+def melhor_similaridade(
+    cliente_id: str, pergunta: str, empresa_id: Optional[str] = None
+) -> Optional[float]:
+    """Diagnóstico: qual a MELHOR similaridade encontrada p/ a pergunta, sem
+    aplicar limiar nenhum (match_threshold=0). Útil pra calibrar o limiar real
+    sem precisar adivinhar — se vier baixo mesmo pra pergunta óbvia, o limiar
+    de busca padrão está cortando resultado válido."""
+    embedding = gerar_embedding(pergunta)
+    resp = supabase.rpc("match_base_conhecimento", {
+        "query_embedding": embedding,
+        "match_cliente_id": cliente_id,
+        "match_empresa_id": empresa_id,
+        "match_threshold": 0,
+        "match_count": 1,
+    }).execute()
+    linhas = resp.data or []
+    return linhas[0]["similarity"] if linhas else None
 
 
 def contar_por_tipo(cliente_id: str) -> dict[str, int]:

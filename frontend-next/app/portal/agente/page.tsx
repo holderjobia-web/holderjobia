@@ -74,9 +74,14 @@ export default function AgentePage() {
         pergunta: texto,
         empresa_id: empresaId || undefined,
       });
+      const fontes = data.fontes as string[] | undefined;
+      const debug =
+        (!fontes || fontes.length === 0) && data.similaridade_maxima != null
+          ? [`(debug) melhor similaridade encontrada: ${Number(data.similaridade_maxima).toFixed(3)}`]
+          : undefined;
       setMensagens((atual) => [
         ...atual,
-        { id: crypto.randomUUID(), papel: "agente", texto: data.resposta, fontes: data.fontes },
+        { id: crypto.randomUUID(), papel: "agente", texto: data.resposta, fontes: fontes?.length ? fontes : debug },
       ]);
     } catch (err: any) {
       setErro(err?.response?.data?.detail ?? "Falha ao consultar o agente.");

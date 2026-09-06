@@ -25,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from config import config
 from core.auth import admin_do_cliente, usuario_atual
-from core.base_conhecimento import buscar_contexto, contar_por_tipo
+from core.base_conhecimento import buscar_contexto, contar_por_tipo, melhor_similaridade
 from core.dre_processamento import reindexar_dre_cliente
 from supabase_client import supabase
 
@@ -68,6 +68,7 @@ class PerguntaEntrada(BaseModel):
 class RespostaAgente(BaseModel):
     resposta: str
     fontes: list[str]
+    similaridade_maxima: float | None = None  # só preenchido quando não achou contexto (debug)
 
 
 def _empresa_do_cliente(empresa_id: str, cliente_id: str) -> bool:
@@ -105,8 +106,14 @@ async def perguntar(dados: PerguntaEntrada, usuario: dict = Depends(usuario_atua
         contexto_texto = "\n\n".join(
             f"[Fonte: {t.get('fonte') or t.get('tipo')}]\n{t['conteudo']}" for t in trechos
         )
+        similaridade_maxima = None
     else:
         contexto_texto = "(nenhum dado relevante encontrado na base para esta pergunta)"
+        try:
+            similaridade_maxima = melhor_similaridade(cliente_id, dados.pergunta, empresa_id=dados.empresa_id)
+        except Exception:
+            logger.exception("Falha ao calcular melhor similaridade (cliente_id=%s)", cliente_id)
+            similaridade_maxima = None
 
     mensagens = [
         {"role": "system", "content": _SYSTEM_PROMPT},
@@ -143,7 +150,7 @@ async def perguntar(dados: PerguntaEntrada, usuario: dict = Depends(usuario_atua
         raise HTTPException(status_code=503, detail="Falha ao gerar a resposta do agente.")
 
     fontes = sorted({t.get("fonte") for t in trechos if t.get("fonte")})
-    return RespostaAgente(resposta=resposta, fontes=fontes)
+    return RespostaAgente(resposta=resposta, fontes=fontes, similaridade_maxima=similaridade_maxima)
 
 
 @router.post("/reindexar")
