@@ -32,10 +32,18 @@ def _indexar_chunk(
     empresa_id: Optional[str] = None,
     mes_referencia: Optional[str] = None,
     fonte: Optional[str] = None,
-) -> None:
-    """Gera o embedding e grava 1 chunk na base_conhecimento. Best-effort (não derruba o processamento do DRE)."""
+) -> Optional[str]:
+    """Gera o embedding e grava 1 chunk na base_conhecimento.
+
+    Retorna None em sucesso, ou uma mensagem de erro (curta, sem stack trace) em
+    falha — quem chama decide se derruba o fluxo ou só loga/reporta (best-effort).
+    """
     try:
         embedding = gerar_embedding(conteudo)
+    except Exception as e:
+        logger.exception("Falha ao gerar embedding (tipo=%s fonte=%s)", tipo, fonte)
+        return f"embedding: {e}"
+    try:
         supabase.table("base_conhecimento").insert({
             "cliente_id": cliente_id,
             "empresa_id": empresa_id,
@@ -45,8 +53,10 @@ def _indexar_chunk(
             "embedding": embedding,
             "fonte": fonte,
         }).execute()
-    except Exception:
-        logger.exception("Falha ao indexar chunk na base de conhecimento (tipo=%s fonte=%s)", tipo, fonte)
+        return None
+    except Exception as e:
+        logger.exception("Falha ao gravar chunk na base de conhecimento (tipo=%s fonte=%s)", tipo, fonte)
+        return f"insert: {e}"
 
 
 def reindexar_fonte(cliente_id: str, fonte: str, tipo: str) -> None:
@@ -96,9 +106,12 @@ def indexar_resumo_mes(
     mes_referencia: str,
     resumo: str,
     fonte: str,
-) -> None:
-    """Indexa o resumo textual (derivado) de 1 mês de DRE (tipo='dre_resumo')."""
-    _indexar_chunk(cliente_id, resumo, "dre_resumo", empresa_id=empresa_id, mes_referencia=mes_referencia, fonte=fonte)
+) -> Optional[str]:
+    """Indexa o resumo textual (derivado) de 1 mês de DRE (tipo='dre_resumo').
+
+    Retorna None em sucesso, ou a mensagem de erro em falha.
+    """
+    return _indexar_chunk(cliente_id, resumo, "dre_resumo", empresa_id=empresa_id, mes_referencia=mes_referencia, fonte=fonte)
 
 
 def buscar_contexto(
@@ -118,3 +131,18 @@ def buscar_contexto(
         "match_count": limite,
     }).execute()
     return resp.data or []
+
+
+def contar_por_tipo(cliente_id: str) -> dict[str, int]:
+    """Diagnóstico: quantos chunks existem na base_conhecimento do cliente, por tipo."""
+    res = (
+        supabase.table("base_conhecimento")
+        .select("tipo")
+        .eq("cliente_id", cliente_id)
+        .execute()
+    )
+    contagem: dict[str, int] = {}
+    for row in res.data or []:
+        tipo = row["tipo"]
+        contagem[tipo] = contagem.get(tipo, 0) + 1
+    return contagem

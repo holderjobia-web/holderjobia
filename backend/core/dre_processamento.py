@@ -279,6 +279,7 @@ def reindexar_dre_cliente(cliente_id: str) -> dict:
 
     empresas_cache: dict[str, str] = {}
     indexados = 0
+    falhas: list[str] = []
     for row in linhas.data or []:
         empresa_id = row["empresa_id"]
         if empresa_id not in empresas_cache:
@@ -305,7 +306,15 @@ def reindexar_dre_cliente(cliente_id: str) -> dict:
         fonte = row.get("fonte") or f"DRE consolidado ({mes_iso})"
 
         remover_resumo_mes(cliente_id, empresa_id, mes_iso)
-        indexar_resumo_mes(cliente_id, empresa_id, mes_iso, resumo, fonte)
-        indexados += 1
+        erro = indexar_resumo_mes(cliente_id, empresa_id, mes_iso, resumo, fonte)
+        if erro:
+            falhas.append(f"{empresas_cache[empresa_id]} {mes_iso}: {erro}")
+        else:
+            indexados += 1
 
-    return {"meses_indexados": indexados}
+    return {
+        "meses_indexados": indexados,
+        "meses_total": len(linhas.data or []),
+        "falhas": falhas[:5],  # amostra — evita resposta gigante se tudo falhar
+        "total_falhas": len(falhas),
+    }

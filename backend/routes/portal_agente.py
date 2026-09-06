@@ -9,10 +9,12 @@ quer ouvir. GOVERNANÇA: nunca fabrica número; responde só com base no
 contexto recuperado, e diz claramente quando não tem dado suficiente.
 
 Rota (exige JWT do portal — JWT_SECRET):
-  POST /agente/perguntar  → busca contexto (RAG) + chama o GPT
-  POST /agente/reindexar  → backfill: reindexa o RAG a partir do dre_consolidado
-                            já gravado (admin_do_cliente) — útil p/ DREs lançados
-                            antes da Etapa 7 existir.
+  POST /agente/perguntar   → busca contexto (RAG) + chama o GPT
+  POST /agente/reindexar   → backfill: reindexa o RAG a partir do dre_consolidado
+                             já gravado (admin_do_cliente) — útil p/ DREs lançados
+                             antes da Etapa 7 existir.
+  GET  /agente/diagnostico → quantas linhas existem em dre_consolidado x quantos
+                             chunks existem na base_conhecimento (admin_do_cliente).
 """
 
 import logging
@@ -23,7 +25,7 @@ from pydantic import BaseModel, Field
 
 from config import config
 from core.auth import admin_do_cliente, usuario_atual
-from core.base_conhecimento import buscar_contexto
+from core.base_conhecimento import buscar_contexto, contar_por_tipo
 from core.dre_processamento import reindexar_dre_cliente
 from supabase_client import supabase
 
@@ -154,3 +156,35 @@ async def reindexar(usuario: dict = Depends(admin_do_cliente)):
     except Exception:
         logger.exception("Falha ao reindexar RAG (cliente_id=%s)", usuario["cliente_id"])
         raise HTTPException(status_code=503, detail="Falha ao reindexar a base de conhecimento.")
+
+
+@router.get("/diagnostico")
+async def diagnostico(usuario: dict = Depends(admin_do_cliente)):
+    """Mostra de onde o agente pegaria dados: quantas linhas existem em
+    dre_consolidado vs quantos chunks existem na base_conhecimento (por tipo).
+    Ajuda a diagnosticar por que o agente responde 'sem dados'."""
+    cliente_id = usuario["cliente_id"]
+    try:
+        dre = (
+            supabase.table("dre_consolidado")
+            .select("id", count="exact")
+            .eq("cliente_id", cliente_id)
+            .execute()
+        )
+        dre_consolidado_linhas = dre.count or 0
+    except Exception:
+        logger.exception("Falha ao contar dre_consolidado (cliente_id=%s)", cliente_id)
+        dre_consolidado_linhas = None
+
+    try:
+        base_conhecimento = contar_por_tipo(cliente_id)
+    except Exception:
+        logger.exception("Falha ao contar base_conhecimento (cliente_id=%s)", cliente_id)
+        base_conhecimento = None
+
+    return {
+        "dre_consolidado_linhas": dre_consolidado_linhas,
+        "base_conhecimento": base_conhecimento,
+        "openai_api_key_configurada": bool(config.OPENAI_API_KEY),
+        "modelo_chat": config.OPENAI_CHAT_MODEL,
+    }
