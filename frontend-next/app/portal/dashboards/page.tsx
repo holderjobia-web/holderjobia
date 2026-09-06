@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import PortalShell from "@/components/portal-shell";
+import { Icone } from "@/components/icons";
 import { portalApi } from "@/lib/portal-api";
 
 type Empresa = { id: string; codigo: string; nome_razao_social: string };
@@ -80,6 +81,7 @@ const CONF_COR: Record<string, string> = {
 export default function DashboardsPage() {
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [empresaId, setEmpresaId] = useState("");
+  const [busca, setBusca] = useState("");
   const [meses, setMeses] = useState<MesDre[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
@@ -142,6 +144,18 @@ export default function DashboardsPage() {
     [meses]
   );
 
+  const empresasFiltradas = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return empresas;
+    return empresas.filter(
+      (emp) =>
+        emp.codigo.toLowerCase().includes(termo) ||
+        emp.nome_razao_social.toLowerCase().includes(termo)
+    );
+  }, [empresas, busca]);
+
+  const empresaSelecionada = empresas.find((e) => e.id === empresaId) ?? null;
+
   const receitaTotal = soma(meses, "receita_liquida");
   const lucroTotal = soma(meses, "lucro_liquido");
   const retiradaTotal = soma(meses, "retirada");
@@ -153,34 +167,90 @@ export default function DashboardsPage() {
   return (
     <PortalShell titulo="Dashboards">
       <section className="rounded-xl bg-white border border-navy-100 p-5 shadow-sm">
-        <label className="block text-sm font-medium text-navy-700 mb-1">
-          Empresa
-        </label>
-        <select
-          value={empresaId}
-          onChange={(e) => setEmpresaId(e.target.value)}
-          className="w-full sm:w-96 rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
-        >
-          <option value="">— Selecione uma empresa —</option>
-          {empresas.map((emp) => (
-            <option key={emp.id} value={emp.id}>
-              {emp.codigo} — {emp.nome_razao_social}
-            </option>
-          ))}
-        </select>
-        {erro && <p className="mt-2 text-sm text-red-600">{erro}</p>}
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-moss-50 text-moss-700">
+            <Icone nome="empresas" className="h-5 w-5" />
+          </div>
+          <div>
+            <h2 className="font-semibold text-navy-800">Empresa</h2>
+            <p className="text-sm text-navy-500">
+              Escolha a unidade para ver os indicadores.
+            </p>
+          </div>
+        </div>
+
+        {empresas.length > 6 && (
+          <div className="relative mt-4">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-navy-400">
+              <Icone nome="lista" className="h-4 w-4" />
+            </span>
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar por código ou nome..."
+              className="w-full rounded-lg border border-navy-100 py-2 pl-9 pr-3 text-sm text-navy-800 outline-none focus:border-moss-500 sm:w-96"
+            />
+          </div>
+        )}
+
+        <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+          {empresasFiltradas.length === 0 ? (
+            <p className="text-sm text-navy-400">Nenhuma empresa encontrada.</p>
+          ) : (
+            empresasFiltradas.map((emp) => {
+              const ativa = emp.id === empresaId;
+              return (
+                <button
+                  key={emp.id}
+                  type="button"
+                  onClick={() => setEmpresaId(emp.id)}
+                  title={emp.nome_razao_social}
+                  className={`flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors ${
+                    ativa
+                      ? "border-moss-600 bg-moss-600 text-white"
+                      : "border-navy-100 bg-white text-navy-700 hover:border-moss-400 hover:bg-moss-50"
+                  }`}
+                >
+                  {ativa && <Icone nome="check" className="h-3.5 w-3.5" />}
+                  <span className="font-semibold">{emp.codigo}</span>
+                  <span className="max-w-[10rem] truncate opacity-80">
+                    {emp.nome_razao_social}
+                  </span>
+                </button>
+              );
+            })
+          )}
+        </div>
+        {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
       </section>
 
       {!empresaId ? (
-        <p className="mt-6 text-navy-500">
-          Selecione uma empresa para ver os indicadores.
-        </p>
+        <div className="mt-6 flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-navy-200 bg-navy-50/40 px-6 py-14 text-center">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white text-navy-300 shadow-sm">
+            <Icone nome="dashboards" className="h-6 w-6" />
+          </div>
+          <p className="font-medium text-navy-700">Selecione uma empresa acima</p>
+          <p className="text-sm text-navy-400">
+            Os indicadores consolidados aparecem aqui assim que você escolher.
+          </p>
+        </div>
       ) : carregando ? (
-        <p className="mt-6 text-navy-500">Carregando...</p>
+        <div className="mt-6 flex flex-col items-center gap-3 rounded-xl border border-navy-100 bg-white px-6 py-14 text-center shadow-sm">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-navy-200 border-t-moss-600" />
+          <p className="text-sm text-navy-500">Carregando indicadores...</p>
+        </div>
       ) : meses.length === 0 ? (
-        <p className="mt-6 text-navy-500">
-          Ainda não há DRE processado para esta empresa.
-        </p>
+        <div className="mt-6 flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-navy-200 bg-navy-50/40 px-6 py-14 text-center">
+          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-white text-navy-300 shadow-sm">
+            <Icone nome="dre" className="h-6 w-6" />
+          </div>
+          <p className="font-medium text-navy-700">
+            Ainda não há DRE processado para {empresaSelecionada?.codigo ?? "esta empresa"}
+          </p>
+          <p className="text-sm text-navy-400">
+            Envie e processe um DRE para começar a ver os indicadores.
+          </p>
+        </div>
       ) : (
         <>
           <div className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
