@@ -21,8 +21,8 @@ from decimal import Decimal
 from typing import Optional
 
 from config import config
-from core.base_conhecimento import indexar_resumo_mes, indexar_texto_bruto
-from core.dre_parser import LinhaMensal, extrair_texto_pdf, parsear
+from core.base_conhecimento import indexar_resumo_mes, indexar_texto_bruto, remover_resumo_mes
+from core.dre_parser import extrair_texto_pdf, parsear
 from supabase_client import supabase
 
 logger = logging.getLogger(__name__)
@@ -50,21 +50,34 @@ _LABEL_MONETARIO = {
 _TOL_COMPARACAO = Decimal("0.01")
 
 
-def _brl(v: Optional[Decimal]) -> str:
+def _brl(v) -> str:
+    """Formata um valor monetário (Decimal, float ou None) como 'R$ 1.234,56'."""
     if v is None:
         return "não consta"
-    s = f"{v:,.2f}"
+    d = v if isinstance(v, Decimal) else Decimal(str(v))
+    s = f"{d:,.2f}"
     return "R$ " + s.replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def _resumo_mes(nome_empresa: str, mes_iso: str, mes: LinhaMensal) -> str:
-    """Texto narrativo (derivado, nunca fabricado) de 1 mês de DRE — indexado no RAG."""
+def _resumo_mes(
+    nome_empresa: str,
+    mes_iso: str,
+    valores: dict,
+    confiabilidade: Optional[str],
+    divergencias: Optional[list] = None,
+) -> str:
+    """Texto narrativo (derivado, nunca fabricado) de 1 mês de DRE — indexado no RAG.
+
+    `valores` é um dict simples {coluna: numero|None} — aceita tanto o resultado do
+    parser (LinhaMensal.valores) quanto uma linha já gravada em dre_consolidado,
+    o que permite reaproveitar esta função no backfill (reindexar_dre_cliente).
+    """
     linhas = [f"DRE de {nome_empresa} referente a {mes_iso}:"]
     for coluna, rotulo in _LABEL_MONETARIO.items():
-        linhas.append(f"- {rotulo}: {_brl(mes.valores.get(coluna))}")
-    linhas.append(f"Confiabilidade da extração: {mes.confiabilidade}.")
-    if mes.divergencias:
-        linhas.append("Observações de conferência: " + "; ".join(mes.divergencias))
+        linhas.append(f"- {rotulo}: {_brl(valores.get(coluna))}")
+    linhas.append(f"Confiabilidade da extração: {confiabilidade or 'pendente'}.")
+    if divergencias:
+        linhas.append("Observações de conferência: " + "; ".join(divergencias))
     return "\n".join(linhas)
 
 
@@ -186,6 +199,16 @@ def processar_upload(upload: dict) -> dict:
                     "observacao": (obs_atual + "\n" + nota).strip(),
                     "atualizado_em": _agora(),
                 }).eq("id", atual["id"]).execute()
+            else:
+                # Idempotente (dados iguais): ainda assim GARANTE a indexação RAG.
+                # Self-heal p/ DREs processados antes da Etapa 7 (agente de IA)
+                # existir — clicar "Reprocessar" passa a bastar p/ popular a base.
+                remover_resumo_mes(cliente_id, empresa_id, mes_iso)
+                indexar_resumo_mes(
+                    cliente_id, empresa_id, mes_iso,
+                    _resumo_mes(empresa_nome, mes_iso, mes.valores, mes.confiabilidade, mes.divergencias),
+                    fonte,
+                )
             continue  # linha já existe: idempotente (ou divergência já sinalizada)
 
         # Grava-e-sinaliza: confiabilidade 'baixa' é gravada com flag + observacao.
@@ -206,7 +229,11 @@ def processar_upload(upload: dict) -> dict:
         gravados += 1
 
         # RAG: indexa o resumo textual do mês recém-gravado (derivado, nunca fabricado)
-        indexar_resumo_mes(cliente_id, empresa_id, mes_iso, _resumo_mes(empresa_nome, mes_iso, mes), fonte)
+        indexar_resumo_mes(
+            cliente_id, empresa_id, mes_iso,
+            _resumo_mes(empresa_nome, mes_iso, mes.valores, mes.confiabilidade, mes.divergencias),
+            fonte,
+        )
 
     if divergencias:
         detalhe = (
@@ -232,3 +259,53 @@ def processar_upload(upload: dict) -> dict:
         "divergencias": divergencias,
         "meses_detectados": [m.mes_referencia.isoformat() for m in resultado.meses],
     }
+
+
+def reindexar_dre_cliente(cliente_id: str) -> dict:
+    """Backfill do RAG: reindexa o resumo de TODO o dre_consolidado já gravado do
+    cliente, sem baixar PDF nem alterar dado nenhum.
+
+    Útil para DREs processados ANTES da Etapa 7 (agente de IA) existir — nesses
+    casos base_conhecimento nunca foi populada e o agente responde "sem dados",
+    mesmo com o DRE lançado. Idempotente: pode ser rodado quantas vezes precisar
+    (remove o resumo antigo do mês antes de reindexar).
+    """
+    linhas = (
+        supabase.table("dre_consolidado")
+        .select("empresa_id, mes_referencia, fonte, confiabilidade, observacao, " + ", ".join(_COLUNAS_MONETARIAS))
+        .eq("cliente_id", cliente_id)
+        .execute()
+    )
+
+    empresas_cache: dict[str, str] = {}
+    indexados = 0
+    for row in linhas.data or []:
+        empresa_id = row["empresa_id"]
+        if empresa_id not in empresas_cache:
+            emp = (
+                supabase.table("empresas")
+                .select("codigo,nome_razao_social")
+                .eq("id", empresa_id)
+                .limit(1)
+                .execute()
+            )
+            empresas_cache[empresa_id] = (
+                f"{emp.data[0]['codigo']} — {emp.data[0]['nome_razao_social']}"
+                if emp.data else empresa_id
+            )
+
+        mes_iso = row["mes_referencia"]
+        valores = {c: row.get(c) for c in _COLUNAS_MONETARIAS}
+        observacao = row.get("observacao")
+        divergencias = observacao.split("; ") if observacao else []
+        resumo = _resumo_mes(
+            empresas_cache[empresa_id], mes_iso, valores,
+            row.get("confiabilidade"), divergencias,
+        )
+        fonte = row.get("fonte") or f"DRE consolidado ({mes_iso})"
+
+        remover_resumo_mes(cliente_id, empresa_id, mes_iso)
+        indexar_resumo_mes(cliente_id, empresa_id, mes_iso, resumo, fonte)
+        indexados += 1
+
+    return {"meses_indexados": indexados}

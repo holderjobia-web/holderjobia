@@ -9,7 +9,10 @@ quer ouvir. GOVERNANÇA: nunca fabrica número; responde só com base no
 contexto recuperado, e diz claramente quando não tem dado suficiente.
 
 Rota (exige JWT do portal — JWT_SECRET):
-  POST /agente/perguntar → busca contexto (RAG) + chama o GPT
+  POST /agente/perguntar  → busca contexto (RAG) + chama o GPT
+  POST /agente/reindexar  → backfill: reindexa o RAG a partir do dre_consolidado
+                            já gravado (admin_do_cliente) — útil p/ DREs lançados
+                            antes da Etapa 7 existir.
 """
 
 import logging
@@ -19,8 +22,9 @@ from openai import OpenAI
 from pydantic import BaseModel, Field
 
 from config import config
-from core.auth import usuario_atual
+from core.auth import admin_do_cliente, usuario_atual
 from core.base_conhecimento import buscar_contexto
+from core.dre_processamento import reindexar_dre_cliente
 from supabase_client import supabase
 
 router = APIRouter(prefix="/agente", tags=["agente"])
@@ -138,3 +142,15 @@ async def perguntar(dados: PerguntaEntrada, usuario: dict = Depends(usuario_atua
 
     fontes = sorted({t.get("fonte") for t in trechos if t.get("fonte")})
     return RespostaAgente(resposta=resposta, fontes=fontes)
+
+
+@router.post("/reindexar")
+async def reindexar(usuario: dict = Depends(admin_do_cliente)):
+    """Backfill: reindexa a base de conhecimento a partir do dre_consolidado já
+    gravado (sem baixar PDF, sem alterar dado nenhum). Útil quando o agente não
+    encontra dados de DREs lançados antes desta feature existir."""
+    try:
+        return reindexar_dre_cliente(usuario["cliente_id"])
+    except Exception:
+        logger.exception("Falha ao reindexar RAG (cliente_id=%s)", usuario["cliente_id"])
+        raise HTTPException(status_code=503, detail="Falha ao reindexar a base de conhecimento.")

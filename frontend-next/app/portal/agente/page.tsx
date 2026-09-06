@@ -31,6 +31,8 @@ export default function AgentePage() {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
+  const [reindexando, setReindexando] = useState(false);
+  const [aviso, setAviso] = useState("");
   const fimRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -79,6 +81,24 @@ export default function AgentePage() {
     await perguntar(pergunta.trim());
   }
 
+  async function reindexarBase() {
+    setErro("");
+    setAviso("");
+    setReindexando(true);
+    try {
+      const { data } = await portalApi.post<{ meses_indexados: number }>("/agente/reindexar");
+      setAviso(
+        data.meses_indexados > 0
+          ? `Base atualizada: ${data.meses_indexados} mês(es) de DRE reindexado(s).`
+          : "Nenhum DRE consolidado encontrado para indexar ainda."
+      );
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao atualizar a base de conhecimento.");
+    } finally {
+      setReindexando(false);
+    }
+  }
+
   const empresaSelecionada = empresas.find((e) => e.id === empresaId) ?? null;
 
   return (
@@ -91,6 +111,22 @@ export default function AgentePage() {
         titulo="Contexto da conversa"
         descricao="Selecione uma empresa para focar a conversa nela, ou deixe em branco para falar sobre todo o grupo."
       />
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={reindexarBase}
+          disabled={reindexando}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-navy-100 px-3 py-1.5 text-xs font-semibold text-navy-600 hover:border-moss-400 hover:bg-moss-50 disabled:opacity-60"
+        >
+          <Icone nome="atualizar" className="h-3.5 w-3.5" />
+          {reindexando ? "Atualizando..." : "Atualizar base de conhecimento"}
+        </button>
+        <span className="text-xs text-navy-400">
+          Reprocessa os DREs já lançados na base do agente (não altera nenhum dado).
+        </span>
+      </div>
+      {aviso && <p className="mt-2 text-sm text-moss-700">{aviso}</p>}
 
       <section className="mt-4 flex h-[65vh] flex-col overflow-hidden rounded-xl bg-white border border-navy-100 shadow-sm">
         <div className="flex items-center justify-between gap-2 border-b border-navy-100 px-5 py-3">

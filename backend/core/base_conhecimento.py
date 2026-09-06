@@ -71,6 +71,25 @@ def indexar_texto_bruto(cliente_id: str, empresa_id: Optional[str], fonte: str, 
         _indexar_chunk(cliente_id, chunk, "dre_pdf_bruto", empresa_id=empresa_id, fonte=fonte)
 
 
+def remover_resumo_mes(cliente_id: str, empresa_id: str, mes_referencia: str) -> None:
+    """Remove o resumo (tipo='dre_resumo') antigo de 1 mês/empresa antes de reindexar
+    (evita duplicar o mesmo mês na base a cada reprocessamento/backfill)."""
+    try:
+        (
+            supabase.table("base_conhecimento")
+            .delete()
+            .eq("cliente_id", cliente_id)
+            .eq("empresa_id", empresa_id)
+            .eq("mes_referencia", mes_referencia)
+            .eq("tipo", "dre_resumo")
+            .execute()
+        )
+    except Exception:
+        logger.exception(
+            "Falha ao limpar resumo antigo (empresa_id=%s mes=%s)", empresa_id, mes_referencia
+        )
+
+
 def indexar_resumo_mes(
     cliente_id: str,
     empresa_id: str,
