@@ -3,6 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import PortalShell from "@/components/portal-shell";
 import { Icone } from "@/components/icons";
+import { MarkdownSimples } from "@/components/markdown-simples";
 import { SeletorEmpresa, type EmpresaOpcao, type RedeOpcao } from "@/components/seletor-empresa";
 import { portalApi } from "@/lib/portal-api";
 
@@ -270,13 +271,13 @@ export default function AgentePage() {
                   <Icone nome={m.papel === "usuario" ? "empresas" : "agente"} className="h-3.5 w-3.5" />
                 </div>
                 <div
-                  className={`max-w-[80%] rounded-xl px-4 py-3 text-sm whitespace-pre-wrap ${
+                  className={`max-w-[80%] rounded-xl px-4 py-3 text-sm ${
                     m.papel === "usuario"
-                      ? "bg-navy-700 text-white"
+                      ? "whitespace-pre-wrap bg-navy-700 text-white"
                       : "bg-moss-50 text-navy-800 border border-moss-100"
                   }`}
                 >
-                  {m.texto}
+                  {m.papel === "agente" ? <MarkdownSimples texto={m.texto} /> : m.texto}
                   {m.fontes && m.fontes.length > 0 && (
                     <p className="mt-2 flex items-start gap-1 text-xs text-navy-400">
                       <Icone nome="dre" className="h-3 w-3 shrink-0 mt-0.5" />
