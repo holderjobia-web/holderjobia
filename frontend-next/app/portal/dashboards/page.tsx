@@ -262,8 +262,8 @@ export default function DashboardsPage() {
                 <button
                   key={emp.id}
                   type="button"
-                  onClick={() => setEmpresaId(emp.id)}
-                  title={emp.nome_razao_social}
+                  onClick={() => setEmpresaId(ativa ? "" : emp.id)}
+                  title={ativa ? "Clique para desmarcar" : emp.nome_razao_social}
                   className={`relative rounded-lg border px-2 py-1.5 text-left transition-colors ${
                     ativa
                       ? "border-moss-600 bg-moss-600 text-white"
@@ -294,6 +294,13 @@ export default function DashboardsPage() {
             <span className="font-medium text-navy-700">
               {empresaSelecionada.codigo} — {empresaSelecionada.nome_razao_social}
             </span>
+            <button
+              type="button"
+              onClick={() => setEmpresaId("")}
+              className="ml-2 font-medium text-navy-400 hover:text-red-600"
+            >
+              Limpar seleção
+            </button>
           </p>
         )}
         {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
