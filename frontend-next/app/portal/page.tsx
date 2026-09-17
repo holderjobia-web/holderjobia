@@ -22,21 +22,9 @@ const GRUPOS: Grupo[] = [
     cards: [
       {
         href: "/portal/dre",
-        titulo: "Envio de DRE",
-        descricao: "Envie seus DREs em PDF e acompanhe o processamento.",
+        titulo: "DRE & Dashboards",
+        descricao: "Envie DREs, acompanhe indicadores por unidade e a visão consolidada do grupo.",
         icone: "dre",
-      },
-      {
-        href: "/portal/dashboards",
-        titulo: "Dashboards",
-        descricao: "Indicadores consolidados das suas empresas.",
-        icone: "dashboards",
-      },
-      {
-        href: "/portal/grupo",
-        titulo: "Visão do grupo",
-        descricao: "Consolidado de todas as unidades e comparativo entre elas.",
-        icone: "grupo",
       },
       {
         href: "/portal/orcamento",

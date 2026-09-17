@@ -12,7 +12,6 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import PortalShell from "@/components/portal-shell";
 import { Icone } from "@/components/icons";
 import {
   SeletorEmpresa,
@@ -161,7 +160,7 @@ export default function DashboardsPage() {
       : null;
 
   return (
-    <PortalShell titulo="Dashboards">
+    <>
       <SeletorEmpresa
         empresas={empresas}
         redes={redes}
@@ -323,7 +322,7 @@ export default function DashboardsPage() {
           </section>
         </>
       )}
-    </PortalShell>
+    </>
   );
 }
 

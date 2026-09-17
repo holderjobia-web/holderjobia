@@ -7,9 +7,7 @@ import { portalApi, clearPortalToken } from "@/lib/portal-api";
 
 const NAV = [
   { href: "/portal", label: "Início" },
-  { href: "/portal/dre", label: "Envio de DRE" },
-  { href: "/portal/dashboards", label: "Dashboards" },
-  { href: "/portal/grupo", label: "Visão do grupo" },
+  { href: "/portal/dre", label: "DRE & Dashboards" },
   { href: "/portal/orcamento", label: "Orçamento" },
   { href: "/portal/socios", label: "Sócios & Distribuição" },
   { href: "/portal/agente", label: "Agente IA" },
