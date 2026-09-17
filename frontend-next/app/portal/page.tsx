@@ -27,6 +27,12 @@ const GRUPOS: Grupo[] = [
         icone: "dre",
       },
       {
+        href: "/portal/vendas",
+        titulo: "Vendas",
+        descricao: "Envie planilhas de vendas por unidade e acompanhe o dashboard separado da DRE.",
+        icone: "vendas",
+      },
+      {
         href: "/portal/orcamento",
         titulo: "Orçamento",
         descricao: "Defina metas por mês e compare o previsto com o realizado.",

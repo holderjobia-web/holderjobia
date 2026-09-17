@@ -27,6 +27,7 @@ from config import config
 from core.auth import admin_do_cliente, usuario_atual
 from core.base_conhecimento import buscar_contexto, contar_por_tipo, melhor_similaridade
 from core.dre_processamento import reindexar_dre_cliente
+from core.vendas_processamento import reindexar_vendas_cliente
 from supabase_client import supabase
 
 router = APIRouter(prefix="/agente", tags=["agente"])
@@ -155,14 +156,21 @@ async def perguntar(dados: PerguntaEntrada, usuario: dict = Depends(usuario_atua
 
 @router.post("/reindexar")
 async def reindexar(usuario: dict = Depends(admin_do_cliente)):
-    """Backfill: reindexa a base de conhecimento a partir do dre_consolidado já
-    gravado (sem baixar PDF, sem alterar dado nenhum). Útil quando o agente não
-    encontra dados de DREs lançados antes desta feature existir."""
+    """Backfill: reindexa a base de conhecimento a partir do dre_consolidado e do
+    vendas_consolidado já gravados (sem baixar arquivo, sem alterar dado nenhum).
+    Útil quando o agente não encontra dados lançados antes de cada feature existir."""
+    cliente_id = usuario["cliente_id"]
     try:
-        return reindexar_dre_cliente(usuario["cliente_id"])
+        dre = reindexar_dre_cliente(cliente_id)
     except Exception:
-        logger.exception("Falha ao reindexar RAG (cliente_id=%s)", usuario["cliente_id"])
-        raise HTTPException(status_code=503, detail="Falha ao reindexar a base de conhecimento.")
+        logger.exception("Falha ao reindexar RAG de DRE (cliente_id=%s)", cliente_id)
+        raise HTTPException(status_code=503, detail="Falha ao reindexar a base de conhecimento (DRE).")
+    try:
+        vendas = reindexar_vendas_cliente(cliente_id)
+    except Exception:
+        logger.exception("Falha ao reindexar RAG de vendas (cliente_id=%s)", cliente_id)
+        raise HTTPException(status_code=503, detail="Falha ao reindexar a base de conhecimento (Vendas).")
+    return {"dre": dre, "vendas": vendas}
 
 
 @router.get("/diagnostico")
@@ -184,6 +192,18 @@ async def diagnostico(usuario: dict = Depends(admin_do_cliente)):
         dre_consolidado_linhas = None
 
     try:
+        vendas = (
+            supabase.table("vendas_consolidado")
+            .select("id", count="exact")
+            .eq("cliente_id", cliente_id)
+            .execute()
+        )
+        vendas_consolidado_linhas = vendas.count or 0
+    except Exception:
+        logger.exception("Falha ao contar vendas_consolidado (cliente_id=%s)", cliente_id)
+        vendas_consolidado_linhas = None
+
+    try:
         base_conhecimento = contar_por_tipo(cliente_id)
     except Exception:
         logger.exception("Falha ao contar base_conhecimento (cliente_id=%s)", cliente_id)
@@ -191,6 +211,7 @@ async def diagnostico(usuario: dict = Depends(admin_do_cliente)):
 
     return {
         "dre_consolidado_linhas": dre_consolidado_linhas,
+        "vendas_consolidado_linhas": vendas_consolidado_linhas,
         "base_conhecimento": base_conhecimento,
         "openai_api_key_configurada": bool(config.OPENAI_API_KEY),
         "modelo_chat": config.OPENAI_CHAT_MODEL,

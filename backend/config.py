@@ -73,6 +73,9 @@ class Config:
     # Storage — bucket privado dos PDFs de DRE
     DRE_BUCKET: str = os.getenv("DRE_BUCKET", "dre-uploads")
 
+    # Storage — bucket privado das planilhas de Vendas (Melhoria 2)
+    VENDAS_BUCKET: str = os.getenv("VENDAS_BUCKET", "vendas-uploads")
+
     # Autenticação JWT — separadas: portal (usuário) e admin (super admin)
     JWT_SECRET: str = os.getenv("JWT_SECRET", "")
     JWT_ADMIN_SECRET: str = os.getenv("JWT_ADMIN_SECRET", "")

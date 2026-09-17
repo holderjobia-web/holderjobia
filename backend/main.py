@@ -75,6 +75,7 @@ from routes.portal_empresas import router as portal_empresas_router
 from routes.portal_orcamento import router as portal_orcamento_router
 from routes.portal_redes import router as portal_redes_router
 from routes.portal_socios import router as portal_socios_router
+from routes.vendas import router as vendas_router
 
 app.include_router(auth_router)
 app.include_router(admin_auth_router)
@@ -88,6 +89,7 @@ app.include_router(portal_empresas_router)
 app.include_router(portal_orcamento_router)
 app.include_router(portal_redes_router)
 app.include_router(portal_socios_router)
+app.include_router(vendas_router)
 
 
 @app.get("/")

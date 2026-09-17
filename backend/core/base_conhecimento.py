@@ -32,6 +32,7 @@ def _indexar_chunk(
     empresa_id: Optional[str] = None,
     mes_referencia: Optional[str] = None,
     fonte: Optional[str] = None,
+    categoria: Optional[str] = None,
 ) -> Optional[str]:
     """Gera o embedding e grava 1 chunk na base_conhecimento.
 
@@ -52,6 +53,7 @@ def _indexar_chunk(
             "conteudo": conteudo,
             "embedding": embedding,
             "fonte": fonte,
+            "categoria": categoria,
         }).execute()
         return None
     except Exception as e:
@@ -112,6 +114,46 @@ def indexar_resumo_mes(
     Retorna None em sucesso, ou a mensagem de erro em falha.
     """
     return _indexar_chunk(cliente_id, resumo, "dre_resumo", empresa_id=empresa_id, mes_referencia=mes_referencia, fonte=fonte)
+
+
+def remover_resumo_vendas(cliente_id: str, empresa_id: str, categoria: str, mes_referencia: str) -> None:
+    """Remove o resumo (tipo='vendas_resumo') antigo de 1 mês/empresa/categoria antes
+    de reindexar (evita duplicar). `categoria` distingue os até 3 chunks possíveis
+    (ortodontia/clinico_geral/implante) de uma mesma empresa+mês."""
+    try:
+        (
+            supabase.table("base_conhecimento")
+            .delete()
+            .eq("cliente_id", cliente_id)
+            .eq("empresa_id", empresa_id)
+            .eq("categoria", categoria)
+            .eq("mes_referencia", mes_referencia)
+            .eq("tipo", "vendas_resumo")
+            .execute()
+        )
+    except Exception:
+        logger.exception(
+            "Falha ao limpar resumo de vendas antigo (empresa_id=%s categoria=%s mes=%s)",
+            empresa_id, categoria, mes_referencia,
+        )
+
+
+def indexar_resumo_vendas(
+    cliente_id: str,
+    empresa_id: str,
+    mes_referencia: str,
+    resumo: str,
+    fonte: str,
+    categoria: str,
+) -> Optional[str]:
+    """Indexa o resumo textual (derivado) de 1 mês de vendas (tipo='vendas_resumo').
+
+    Retorna None em sucesso, ou a mensagem de erro em falha.
+    """
+    return _indexar_chunk(
+        cliente_id, resumo, "vendas_resumo",
+        empresa_id=empresa_id, mes_referencia=mes_referencia, fonte=fonte, categoria=categoria,
+    )
 
 
 def buscar_contexto(
