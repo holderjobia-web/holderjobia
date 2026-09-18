@@ -28,7 +28,8 @@ from supabase_client import supabase
 router = APIRouter(tags=["societario"])
 
 _CAMPOS_SOCIO = (
-    "id, cliente_id, nome, cpf, email, papel, observacao, ativo, criado_em"
+    "id, cliente_id, nome, cpf, email, papel, endereco, cro, "
+    "observacao, ativo, criado_em"
 )
 _CAMPOS_PART = (
     "id, cliente_id, empresa_id, socio_id, percentual, papel, "
@@ -69,6 +70,8 @@ class SocioIn(BaseModel):
     cpf: str | None = Field(default=None, max_length=20)
     email: EmailStr | None = None
     papel: str | None = Field(default=None, max_length=100)
+    endereco: str | None = Field(default=None, max_length=300)
+    cro: str | None = Field(default=None, max_length=50)
     observacao: str | None = None
 
 
@@ -77,6 +80,8 @@ class SocioUpdate(BaseModel):
     cpf: str | None = Field(default=None, max_length=20)
     email: EmailStr | None = None
     papel: str | None = Field(default=None, max_length=100)
+    endereco: str | None = Field(default=None, max_length=300)
+    cro: str | None = Field(default=None, max_length=50)
     observacao: str | None = None
     ativo: bool | None = None
 

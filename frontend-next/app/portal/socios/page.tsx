@@ -12,7 +12,27 @@ type Socio = {
   cpf: string | null;
   email: string | null;
   papel: string | null;
+  endereco: string | null;
+  cro: string | null;
   ativo: boolean;
+};
+
+type CamposSocio = {
+  nome: string;
+  cpf: string;
+  email: string;
+  papel: string;
+  endereco: string;
+  cro: string;
+};
+
+const SOCIO_VAZIO: CamposSocio = {
+  nome: "",
+  cpf: "",
+  email: "",
+  papel: "",
+  endereco: "",
+  cro: "",
 };
 
 type Empresa = EmpresaOpcao;
@@ -51,6 +71,7 @@ type SocioDistribuido = {
 
 type RespDistribuicao = {
   rede_selecionada: string | null;
+  empresa_selecionada: string | null;
   redes: RedeOpcao[];
   socios: SocioDistribuido[];
   empresas: {
@@ -85,11 +106,10 @@ export default function SociosPage() {
   const [erro, setErro] = useState("");
 
   // Cadastro de sócio
-  const [nome, setNome] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [email, setEmail] = useState("");
-  const [papel, setPapel] = useState("");
+  const [novoSocio, setNovoSocio] = useState<CamposSocio>(SOCIO_VAZIO);
   const [salvandoSocio, setSalvandoSocio] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [edicao, setEdicao] = useState<CamposSocio>(SOCIO_VAZIO);
 
   // Participação por empresa
   const [empresaId, setEmpresaId] = useState("");
@@ -100,6 +120,7 @@ export default function SociosPage() {
 
   // Distribuição
   const [redeId, setRedeId] = useState("");
+  const [unidadeDist, setUnidadeDist] = useState("");
   const [de, setDe] = useState("");
   const [ate, setAte] = useState("");
   const [dist, setDist] = useState<RespDistribuicao | null>(null);
@@ -149,6 +170,7 @@ export default function SociosPage() {
     try {
       const params: Record<string, string> = {};
       if (redeId) params.rede_id = redeId;
+      if (unidadeDist) params.empresa_id = unidadeDist;
       if (de) params.de = de;
       if (ate) params.ate = ate;
       const { data } = await portalApi.get<RespDistribuicao>("/dre/distribuicao", {
@@ -164,7 +186,8 @@ export default function SociosPage() {
 
   useEffect(() => {
     carregarDistribuicao();
-  }, [redeId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [redeId, unidadeDist]);
 
   async function criarSocio(e: FormEvent) {
     e.preventDefault();
@@ -172,20 +195,59 @@ export default function SociosPage() {
     setSalvandoSocio(true);
     try {
       await portalApi.post("/socios", {
-        nome: nome.trim(),
-        cpf: cpf.trim() || null,
-        email: email.trim() || null,
-        papel: papel.trim() || null,
+        nome: novoSocio.nome.trim(),
+        cpf: novoSocio.cpf.trim() || null,
+        email: novoSocio.email.trim() || null,
+        papel: novoSocio.papel.trim() || null,
+        endereco: novoSocio.endereco.trim() || null,
+        cro: novoSocio.cro.trim() || null,
       });
-      setNome("");
-      setCpf("");
-      setEmail("");
-      setPapel("");
+      setNovoSocio(SOCIO_VAZIO);
       await carregarBase();
     } catch (err: any) {
       setErro(err?.response?.data?.detail ?? "Falha ao cadastrar o sócio.");
     } finally {
       setSalvandoSocio(false);
+    }
+  }
+
+  function abrirEdicao(s: Socio) {
+    setEditandoId(s.id);
+    setEdicao({
+      nome: s.nome ?? "",
+      cpf: s.cpf ?? "",
+      email: s.email ?? "",
+      papel: s.papel ?? "",
+      endereco: s.endereco ?? "",
+      cro: s.cro ?? "",
+    });
+  }
+
+  async function salvarEdicao(id: string) {
+    setErro("");
+    try {
+      await portalApi.patch(`/socios/${id}`, {
+        nome: edicao.nome.trim(),
+        cpf: edicao.cpf.trim() || null,
+        email: edicao.email.trim() || null,
+        papel: edicao.papel.trim() || null,
+        endereco: edicao.endereco.trim() || null,
+        cro: edicao.cro.trim() || null,
+      });
+      setEditandoId(null);
+      await carregarBase();
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao salvar o sócio.");
+    }
+  }
+
+  async function alternarAtivo(s: Socio) {
+    setErro("");
+    try {
+      await portalApi.patch(`/socios/${s.id}`, { ativo: !s.ativo });
+      await carregarBase();
+    } catch (err: any) {
+      setErro(err?.response?.data?.detail ?? "Falha ao atualizar o sócio.");
     }
   }
 
@@ -224,6 +286,15 @@ export default function SociosPage() {
     [socios]
   );
 
+  // Unidades oferecidas no filtro da distribuição, restritas à rede escolhida.
+  const empresasDaRede = useMemo(
+    () => (redeId ? empresas.filter((e) => e.rede_id === redeId) : empresas),
+    [empresas, redeId]
+  );
+
+  const unidadeDistSelecionada =
+    empresas.find((e) => e.id === unidadeDist) ?? null;
+
   const empresaSelecionada = empresas.find((e) => e.id === empresaId) ?? null;
 
   return (
@@ -239,80 +310,175 @@ export default function SociosPage() {
           <div>
             <h2 className="font-semibold text-navy-800">Sócios</h2>
             <p className="text-sm text-navy-500">
-              Cadastre os sócios do grupo (só dados — sem login).
+              Cadastro dos sócios do grupo (só dados — sem login no sistema).
             </p>
           </div>
         </div>
 
-        <form onSubmit={criarSocio} className="mt-4 grid gap-3 sm:grid-cols-4">
+        <form onSubmit={criarSocio} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div>
             <label className="block text-xs font-medium text-navy-500 mb-1">Nome</label>
             <input
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              placeholder="Nome do sócio"
+              value={novoSocio.nome}
+              onChange={(e) => setNovoSocio({ ...novoSocio, nome: e.target.value })}
+              placeholder="Nome completo"
               required
               className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-navy-500 mb-1">
-              CPF (opcional)
-            </label>
+            <label className="block text-xs font-medium text-navy-500 mb-1">CPF</label>
             <input
-              value={cpf}
-              onChange={(e) => setCpf(e.target.value)}
+              value={novoSocio.cpf}
+              onChange={(e) => setNovoSocio({ ...novoSocio, cpf: e.target.value })}
+              placeholder="000.000.000-00"
               className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-navy-500 mb-1">
-              E-mail (opcional)
-            </label>
+            <label className="block text-xs font-medium text-navy-500 mb-1">E-mail</label>
             <input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              value={novoSocio.email}
+              onChange={(e) => setNovoSocio({ ...novoSocio, email: e.target.value })}
+              placeholder="nome@email.com"
               className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-navy-500 mb-1">
-              Papel (opcional)
-            </label>
-            <div className="flex gap-2">
-              <input
-                value={papel}
-                onChange={(e) => setPapel(e.target.value)}
-                placeholder="ex.: sócio-administrador"
-                className="flex-1 rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
-              />
-              <button
-                type="submit"
-                disabled={salvandoSocio}
-                className="rounded-lg bg-moss-600 px-4 py-2 text-sm font-semibold text-white hover:bg-moss-700 disabled:opacity-60"
-              >
-                {salvandoSocio ? "..." : "Adicionar"}
-              </button>
-            </div>
+            <label className="block text-xs font-medium text-navy-500 mb-1">Papel</label>
+            <input
+              value={novoSocio.papel}
+              onChange={(e) => setNovoSocio({ ...novoSocio, papel: e.target.value })}
+              placeholder="ex.: sócio-administrador"
+              className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-navy-500 mb-1">CRO</label>
+            <input
+              value={novoSocio.cro}
+              onChange={(e) => setNovoSocio({ ...novoSocio, cro: e.target.value })}
+              placeholder="ex.: CRO-SP 12345"
+              className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-navy-500 mb-1">Endereço</label>
+            <input
+              value={novoSocio.endereco}
+              onChange={(e) => setNovoSocio({ ...novoSocio, endereco: e.target.value })}
+              placeholder="Rua, nº, bairro, cidade/UF"
+              className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
+            />
+          </div>
+          <div className="sm:col-span-2 lg:col-span-3">
+            <button
+              type="submit"
+              disabled={salvandoSocio}
+              className="w-full rounded-lg bg-moss-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-moss-700 disabled:opacity-60 sm:w-auto"
+            >
+              {salvandoSocio ? "Salvando..." : "Cadastrar sócio"}
+            </button>
           </div>
         </form>
 
         {socios.length === 0 ? (
           <p className="mt-4 text-sm text-navy-400">Nenhum sócio cadastrado ainda.</p>
         ) : (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {socios.map((s) => (
-              <span
-                key={s.id}
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  s.ativo ? "bg-navy-50 text-navy-700" : "bg-navy-100 text-navy-400"
-                }`}
-              >
-                {s.nome}
-                {s.papel ? ` · ${s.papel}` : ""}
-                {!s.ativo ? " · inativo" : ""}
-              </span>
-            ))}
+          <div className="mt-5 overflow-x-auto rounded-lg border border-navy-100">
+            <table className="w-full text-sm">
+              <thead className="bg-navy-50 text-navy-700">
+                <tr>
+                  <th className="text-left font-semibold px-3 py-2">Nome</th>
+                  <th className="text-left font-semibold px-3 py-2">CPF</th>
+                  <th className="text-left font-semibold px-3 py-2">E-mail</th>
+                  <th className="text-left font-semibold px-3 py-2">Papel</th>
+                  <th className="text-left font-semibold px-3 py-2">CRO</th>
+                  <th className="text-left font-semibold px-3 py-2">Endereço</th>
+                  <th className="px-3 py-2"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {socios.map((s) =>
+                  editandoId === s.id ? (
+                    <tr key={s.id} className="border-t border-navy-100 bg-moss-50/40">
+                      {(["nome", "cpf", "email", "papel", "cro", "endereco"] as const).map(
+                        (campo) => (
+                          <td key={campo} className="px-2 py-2">
+                            <input
+                              value={edicao[campo]}
+                              onChange={(e) =>
+                                setEdicao({ ...edicao, [campo]: e.target.value })
+                              }
+                              className="w-full min-w-[7rem] rounded border border-navy-200 px-2 py-1 text-xs text-navy-800 outline-none focus:border-moss-500"
+                            />
+                          </td>
+                        )
+                      )}
+                      <td className="whitespace-nowrap px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => salvarEdicao(s.id)}
+                          className="rounded-lg bg-moss-600 px-3 py-1 text-xs font-semibold text-white hover:bg-moss-700"
+                        >
+                          Salvar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditandoId(null)}
+                          className="ml-2 rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+                        >
+                          Cancelar
+                        </button>
+                      </td>
+                    </tr>
+                  ) : (
+                    <tr
+                      key={s.id}
+                      className={`border-t border-navy-100 ${s.ativo ? "" : "opacity-60"}`}
+                    >
+                      <td className="px-3 py-2 font-medium text-navy-800">
+                        {s.nome}
+                        {!s.ativo && (
+                          <span className="ml-2 rounded-full bg-navy-100 px-2 py-0.5 text-[10px] font-medium text-navy-500">
+                            inativo
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-navy-600">{s.cpf || "—"}</td>
+                      <td className="px-3 py-2 text-navy-600">{s.email || "—"}</td>
+                      <td className="px-3 py-2 text-navy-600">{s.papel || "—"}</td>
+                      <td className="px-3 py-2 text-navy-600">{s.cro || "—"}</td>
+                      <td className="px-3 py-2 text-navy-600">
+                        <span
+                          className="block max-w-[14rem] truncate"
+                          title={s.endereco || undefined}
+                        >
+                          {s.endereco || "—"}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right">
+                        <button
+                          type="button"
+                          onClick={() => abrirEdicao(s)}
+                          className="rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => alternarAtivo(s)}
+                          className="ml-2 rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+                        >
+                          {s.ativo ? "Inativar" : "Ativar"}
+                        </button>
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
           </div>
         )}
       </section>
@@ -488,8 +654,10 @@ export default function SociosPage() {
           <div>
             <h2 className="font-semibold text-navy-800">Distribuição de lucros</h2>
             <p className="text-sm text-navy-500">
-              Derivada da retirada declarada na DRE × % de cada sócio. Nada é
-              gravado — recalculado a cada consulta.
+              {unidadeDistSelecionada
+                ? `Somente ${unidadeDistSelecionada.codigo} — ${unidadeDistSelecionada.nome_razao_social}.`
+                : "Somando todas as unidades do filtro atual."}{" "}
+              Derivada da retirada declarada na DRE × % de cada sócio.
             </p>
           </div>
         </div>
@@ -498,7 +666,10 @@ export default function SociosPage() {
           <div className="mt-4 flex flex-wrap gap-1.5">
             <button
               type="button"
-              onClick={() => setRedeId("")}
+              onClick={() => {
+                setRedeId("");
+                setUnidadeDist("");
+              }}
               className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                 redeId === ""
                   ? "border-navy-700 bg-navy-700 text-white"
@@ -511,7 +682,10 @@ export default function SociosPage() {
               <button
                 key={r.id}
                 type="button"
-                onClick={() => setRedeId(r.id)}
+                onClick={() => {
+                  setRedeId(r.id);
+                  setUnidadeDist("");
+                }}
                 className={`rounded-full border px-2.5 py-1 text-xs font-medium transition-colors ${
                   redeId === r.id
                     ? "border-navy-700 bg-navy-700 text-white"
@@ -525,6 +699,21 @@ export default function SociosPage() {
         )}
 
         <div className="mt-4 flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-medium text-navy-500 mb-1">Unidade</label>
+            <select
+              value={unidadeDist}
+              onChange={(e) => setUnidadeDist(e.target.value)}
+              className="w-56 rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
+            >
+              <option value="">Todas as unidades</option>
+              {empresasDaRede.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.codigo} — {emp.nome_razao_social}
+                </option>
+              ))}
+            </select>
+          </div>
           <div>
             <label className="block text-xs font-medium text-navy-500 mb-1">De</label>
             <input
@@ -550,23 +739,20 @@ export default function SociosPage() {
           >
             {carregandoDist ? "Calculando..." : "Aplicar período"}
           </button>
+          {(unidadeDist || de || ate) && (
+            <button
+              type="button"
+              onClick={() => {
+                setUnidadeDist("");
+                setDe("");
+                setAte("");
+              }}
+              className="rounded-lg border border-navy-200 px-3 py-2 text-sm font-medium text-navy-600 hover:bg-navy-50"
+            >
+              Limpar filtros
+            </button>
+          )}
         </div>
-
-        {dist && dist.alertas.length > 0 && (
-          <div className="mt-4 flex gap-2 rounded-lg bg-amber-50 border border-amber-200 p-3">
-            <Icone nome="alerta" className="h-4 w-4 shrink-0 text-amber-600" />
-            <div>
-              <p className="text-xs font-semibold text-amber-800">
-                Pontos para validar internamente:
-              </p>
-              <ul className="mt-1 list-disc pl-4 text-xs text-amber-800">
-                {dist.alertas.map((a, i) => (
-                  <li key={i}>{a}</li>
-                ))}
-              </ul>
-            </div>
-          </div>
-        )}
 
         <div className="mt-4 overflow-hidden rounded-lg border border-navy-100">
           {!dist || dist.socios.length === 0 ? (

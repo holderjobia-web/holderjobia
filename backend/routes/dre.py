@@ -428,6 +428,7 @@ async def distribuicao_lucros(
     de: str | None = Query(None, description="mês inicial AAAA-MM"),
     ate: str | None = Query(None, description="mês final AAAA-MM"),
     rede_id: str | None = Query(None, description="filtra por rede; ausente = todas"),
+    empresa_id: str | None = Query(None, description="filtra por unidade; ausente = todas"),
     usuario: dict = Depends(usuario_atual),
 ):
     """Distribuição de lucros DERIVADA: retirada da DRE × % de cada sócio.
@@ -438,6 +439,9 @@ async def distribuicao_lucros(
     "ajustado".
     """
     cliente_id = usuario["cliente_id"]
+
+    if empresa_id and not _empresa_do_cliente(empresa_id, cliente_id):
+        raise HTTPException(status_code=404, detail="Empresa não encontrada.")
 
     emp_res = (
         supabase.table("empresas")
@@ -464,7 +468,8 @@ async def distribuicao_lucros(
 
     empresas = [
         e for e in todas_empresas
-        if not rede_id or e.get("rede_id") == rede_id
+        if (not rede_id or e.get("rede_id") == rede_id)
+        and (not empresa_id or e["id"] == empresa_id)
     ]
     empresas_map = {e["id"]: e for e in empresas}
     ids = list(empresas_map.keys()) or ["00000000-0000-0000-0000-000000000000"]
@@ -581,6 +586,7 @@ async def distribuicao_lucros(
     return {
         "cliente_id": cliente_id,
         "rede_selecionada": rede_id,
+        "empresa_selecionada": empresa_id,
         "redes": redes,
         "socios": socios,
         "empresas": empresas_out,
