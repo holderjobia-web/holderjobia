@@ -228,9 +228,22 @@ async def diagnostico(usuario: dict = Depends(admin_do_cliente)):
         logger.exception("Falha ao contar base_conhecimento (cliente_id=%s)", cliente_id)
         base_conhecimento = None
 
+    try:
+        acervos = (
+            supabase.table("acervos_uploads")
+            .select("id", count="exact")
+            .eq("cliente_id", cliente_id)
+            .execute()
+        )
+        acervos_uploads_total = acervos.count or 0
+    except Exception:
+        logger.exception("Falha ao contar acervos_uploads (cliente_id=%s)", cliente_id)
+        acervos_uploads_total = None
+
     return {
         "dre_consolidado_linhas": dre_consolidado_linhas,
         "vendas_consolidado_linhas": vendas_consolidado_linhas,
+        "acervos_uploads_total": acervos_uploads_total,
         "base_conhecimento": base_conhecimento,
         "openai_api_key_configurada": bool(config.OPENAI_API_KEY),
         "modelo_chat": config.OPENAI_CHAT_MODEL,

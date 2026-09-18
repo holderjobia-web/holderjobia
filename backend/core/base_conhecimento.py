@@ -156,6 +156,20 @@ def indexar_resumo_vendas(
     )
 
 
+def indexar_texto_acervo(
+    cliente_id: str, empresa_id: str, fonte: str, texto: str, categoria: str
+) -> None:
+    """Indexa o texto extraído de um arquivo do módulo Acervos, em chunks
+    (tipo='acervo_bruto'). `categoria` guarda contrato/planilha_obra/fotos/
+    plantas/documentos_gerais, útil pra filtrar/depurar depois."""
+    reindexar_fonte(cliente_id, fonte, "acervo_bruto")
+    for chunk in _quebrar_em_chunks(texto):
+        _indexar_chunk(
+            cliente_id, chunk, "acervo_bruto",
+            empresa_id=empresa_id, fonte=fonte, categoria=categoria,
+        )
+
+
 def remover_por_nome_arquivo(cliente_id: str, nome_arquivo: str) -> None:
     """Remove TODOS os chunks originados de um arquivo (resumo + texto bruto).
 

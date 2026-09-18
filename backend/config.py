@@ -76,6 +76,9 @@ class Config:
     # Storage — bucket privado das planilhas de Vendas (Melhoria 2)
     VENDAS_BUCKET: str = os.getenv("VENDAS_BUCKET", "vendas-uploads")
 
+    # Storage — bucket privado dos arquivos do módulo Acervos
+    ACERVOS_BUCKET: str = os.getenv("ACERVOS_BUCKET", "acervos-uploads")
+
     # Autenticação JWT — separadas: portal (usuário) e admin (super admin)
     JWT_SECRET: str = os.getenv("JWT_SECRET", "")
     JWT_ADMIN_SECRET: str = os.getenv("JWT_ADMIN_SECRET", "")

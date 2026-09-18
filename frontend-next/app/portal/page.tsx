@@ -55,6 +55,12 @@ const GRUPOS: Grupo[] = [
         descricao: "Participações societárias e distribuição de lucros.",
         icone: "socios",
       },
+      {
+        href: "/portal/acervos",
+        titulo: "Acervos",
+        descricao: "Contratos, plantas, fotos e documentos organizados por unidade.",
+        icone: "acervos",
+      },
     ],
   },
   {

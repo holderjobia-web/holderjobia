@@ -13,6 +13,7 @@ const NAV = [
   { href: "/portal/orcamento", label: "Orçamento" },
   { href: "/portal/socios", label: "Sócios & Distribuição" },
   { href: "/portal/agente", label: "Agente IA" },
+  { href: "/portal/acervos", label: "Acervos" },
   { href: "/portal/empresas", label: "Minhas empresas" },
 ];
 
