@@ -391,15 +391,25 @@ export default function EnvioVendasPage() {
                     return (
                       <tr key={u.id} className="border-t border-navy-100">
                         <td className="px-4 py-3 text-navy-800 font-medium">
-                          {u.nome_arquivo}
+                          <span
+                            className="block max-w-[15rem] truncate"
+                            title={u.nome_arquivo}
+                          >
+                            {u.nome_arquivo}
+                          </span>
                         </td>
                         <td className="px-4 py-3 text-navy-600">
-                          {nomeEmpresa(u.empresa_id)}
+                          <span
+                            className="block max-w-[10rem] truncate"
+                            title={nomeEmpresa(u.empresa_id)}
+                          >
+                            {nomeEmpresa(u.empresa_id)}
+                          </span>
                         </td>
-                        <td className="px-4 py-3 text-navy-600">
+                        <td className="px-4 py-3 whitespace-nowrap text-navy-600">
                           {u.categoria ? LABEL_CATEGORIA[u.categoria] ?? u.categoria : "Todas (automático)"}
                         </td>
-                        <td className="px-4 py-3 text-navy-600">
+                        <td className="px-4 py-3 whitespace-nowrap text-navy-600">
                           {formatarTamanho(u.tamanho_bytes)}
                         </td>
                         <td className="px-4 py-3">
