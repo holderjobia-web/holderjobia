@@ -2,6 +2,7 @@
 
 import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { Icone } from "@/components/icons";
+import { Modal } from "@/components/modal";
 import { portalApi } from "@/lib/portal-api";
 
 type Empresa = { id: string; codigo: string; nome_razao_social: string };
@@ -42,7 +43,26 @@ export default function EnvioDrePage() {
   const [ok, setOk] = useState("");
   const [processandoId, setProcessandoId] = useState<string | null>(null);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
+  const [visualizando, setVisualizando] = useState<Upload | null>(null);
+  const [urlArquivo, setUrlArquivo] = useState<string | null>(null);
+  const [carregandoArquivo, setCarregandoArquivo] = useState(false);
+  const [erroArquivo, setErroArquivo] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  async function visualizar(u: Upload) {
+    setVisualizando(u);
+    setUrlArquivo(null);
+    setErroArquivo("");
+    setCarregandoArquivo(true);
+    try {
+      const { data } = await portalApi.get<{ url: string }>(`/dre/uploads/${u.id}/arquivo`);
+      setUrlArquivo(data.url);
+    } catch (err: any) {
+      setErroArquivo(err?.response?.data?.detail ?? "Não foi possível abrir o arquivo.");
+    } finally {
+      setCarregandoArquivo(false);
+    }
+  }
 
   async function carregarUploads() {
     try {
@@ -361,9 +381,17 @@ export default function EnvioDrePage() {
                         <td className="px-4 py-3 whitespace-nowrap">
                           <button
                             type="button"
+                            onClick={() => visualizar(u)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+                          >
+                            <Icone nome="olho" className="h-3.5 w-3.5" />
+                            Visualizar
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => processar(u.id)}
                             disabled={processandoId === u.id || u.status === "processando"}
-                            className="rounded-lg border border-moss-600 px-3 py-1 text-xs font-semibold text-moss-700 hover:bg-moss-50 disabled:opacity-50"
+                            className="ml-2 rounded-lg border border-moss-600 px-3 py-1 text-xs font-semibold text-moss-700 hover:bg-moss-50 disabled:opacity-50"
                           >
                             {processandoId === u.id
                               ? "Processando..."
@@ -423,7 +451,15 @@ export default function EnvioDrePage() {
                         <dd className="text-navy-700">{formatarTamanho(u.tamanho_bytes)}</dd>
                       </div>
                     </dl>
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => visualizar(u)}
+                        className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-navy-200 px-3 py-1.5 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+                      >
+                        <Icone nome="olho" className="h-3.5 w-3.5" />
+                        Visualizar
+                      </button>
                       <button
                         type="button"
                         onClick={() => processar(u.id)}
@@ -452,6 +488,40 @@ export default function EnvioDrePage() {
           </>
         )}
       </section>
+
+      <Modal
+        aberto={visualizando !== null}
+        onFechar={() => setVisualizando(null)}
+        titulo={visualizando?.nome_arquivo ?? ""}
+        subtitulo={visualizando ? nomeEmpresa(visualizando.empresa_id) : undefined}
+        rodape={
+          urlArquivo ? (
+            <a
+              href={urlArquivo}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-moss-700 hover:text-moss-800"
+            >
+              <Icone nome="baixar" className="h-4 w-4" />
+              Abrir em nova aba
+            </a>
+          ) : undefined
+        }
+      >
+        {carregandoArquivo ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-navy-200 border-t-moss-600" />
+            <p className="text-sm text-navy-500">Abrindo o arquivo...</p>
+          </div>
+        ) : erroArquivo ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+            <Icone nome="alerta" className="h-8 w-8 text-red-500" />
+            <p className="text-sm text-red-600">{erroArquivo}</p>
+          </div>
+        ) : urlArquivo ? (
+          <iframe src={urlArquivo} title="Visualização do DRE" className="h-full w-full" />
+        ) : null}
+      </Modal>
     </>
   );
 }

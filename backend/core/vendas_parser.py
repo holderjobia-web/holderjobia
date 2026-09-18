@@ -149,6 +149,42 @@ def _localizar_header(linhas: list[tuple]) -> Optional[int]:
     return None
 
 
+def previa_planilha(conteudo: bytes, limite: int = 25) -> dict:
+    """Primeiras linhas da planilha, para conferir visualmente qual arquivo é.
+
+    O .xlsx não abre direto no navegador, então a prévia é montada aqui. A 1ª
+    linha do export traz o nome/endereço da unidade — é o que identifica o
+    arquivo de relance.
+    """
+    wb = load_workbook(BytesIO(conteudo), read_only=True, data_only=True)
+    ws = wb.worksheets[0]
+    linhas = list(ws.iter_rows(values_only=True))
+    total_linhas = len(linhas)
+    wb.close()
+
+    idx_header = _localizar_header(linhas)
+    identificacao = None
+    if linhas and linhas[0] and isinstance(linhas[0][0], str):
+        identificacao = linhas[0][0].strip()
+
+    colunas: list[str] = []
+    if idx_header is not None:
+        colunas = [str(c).strip() if c is not None else "" for c in linhas[idx_header]]
+
+    inicio = (idx_header + 1) if idx_header is not None else 0
+    amostra = [
+        ["" if c is None else str(c) for c in linha]
+        for linha in linhas[inicio:inicio + limite]
+    ]
+
+    return {
+        "identificacao": identificacao,
+        "colunas": colunas,
+        "linhas": amostra,
+        "total_linhas": total_linhas,
+    }
+
+
 def parsear_planilha(conteudo: bytes) -> ResultadoParseVendas:
     """Parseia o .xlsx de vendas e agrega por (mês, categoria), ambos derivados
     linha a linha (coluna "Pagamento" e coluna "Dentista")."""

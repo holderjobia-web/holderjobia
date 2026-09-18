@@ -27,6 +27,7 @@ from fastapi import (
 from config import config
 from core.auth import admin_do_cliente, usuario_atual
 from core.dre_processamento import processar_upload
+from core.storage import EXPIRACAO_SEGUNDOS, gerar_link_temporario
 from supabase_client import supabase
 
 router = APIRouter(prefix="/dre", tags=["dre"])
@@ -152,6 +153,32 @@ async def enviar_dre(
     registro = res.data[0]
     registro.pop("storage_path", None)
     return registro
+
+
+@router.get("/uploads/{upload_id}/arquivo")
+async def visualizar_arquivo(upload_id: str, usuario: dict = Depends(usuario_atual)):
+    """Link temporário p/ abrir o PDF enviado (bucket é privado)."""
+    res = (
+        supabase.table("dre_uploads")
+        .select("id, nome_arquivo, storage_path")
+        .eq("id", upload_id)
+        .eq("cliente_id", usuario["cliente_id"])
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Envio não encontrado.")
+
+    up = res.data[0]
+    url = gerar_link_temporario(config.DRE_BUCKET, up["storage_path"])
+    if not url:
+        raise HTTPException(status_code=502, detail="Não foi possível abrir o arquivo.")
+    return {
+        "url": url,
+        "nome_arquivo": up["nome_arquivo"],
+        "tipo": "pdf",
+        "expira_em_segundos": EXPIRACAO_SEGUNDOS,
+    }
 
 
 @router.post("/uploads/{upload_id}/processar")

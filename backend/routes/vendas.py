@@ -31,6 +31,8 @@ from fastapi import (
 
 from config import config
 from core.auth import admin_do_cliente, usuario_atual
+from core.storage import EXPIRACAO_SEGUNDOS, gerar_link_temporario
+from core.vendas_parser import previa_planilha
 from core.vendas_processamento import processar_upload
 from supabase_client import supabase
 
@@ -180,6 +182,49 @@ async def enviar_vendas(
     registro = res.data[0]
     registro.pop("storage_path", None)
     return registro
+
+
+@router.get("/uploads/{upload_id}/arquivo")
+async def visualizar_arquivo(upload_id: str, usuario: dict = Depends(usuario_atual)):
+    """Prévia da planilha enviada + link temporário para baixar o original.
+
+    O navegador não renderiza .xlsx, então a prévia das primeiras linhas é
+    montada aqui para o usuário conferir qual arquivo é sem precisar baixar.
+    """
+    res = (
+        supabase.table("vendas_uploads")
+        .select("id, nome_arquivo, storage_path")
+        .eq("id", upload_id)
+        .eq("cliente_id", usuario["cliente_id"])
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Envio não encontrado.")
+
+    up = res.data[0]
+    url = gerar_link_temporario(config.VENDAS_BUCKET, up["storage_path"])
+
+    previa = None
+    erro_previa = None
+    try:
+        conteudo = supabase.storage.from_(config.VENDAS_BUCKET).download(up["storage_path"])
+        previa = previa_planilha(conteudo)
+    except Exception:
+        logger.exception("Falha ao gerar prévia da planilha (upload=%s)", upload_id)
+        erro_previa = "Não foi possível gerar a prévia desta planilha."
+
+    if url is None and previa is None:
+        raise HTTPException(status_code=502, detail="Não foi possível abrir o arquivo.")
+
+    return {
+        "url": url,
+        "nome_arquivo": up["nome_arquivo"],
+        "tipo": "xlsx",
+        "previa": previa,
+        "erro_previa": erro_previa,
+        "expira_em_segundos": EXPIRACAO_SEGUNDOS,
+    }
 
 
 @router.post("/uploads/{upload_id}/processar")

@@ -2,7 +2,15 @@
 
 import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { Icone } from "@/components/icons";
+import { Modal } from "@/components/modal";
 import { portalApi } from "@/lib/portal-api";
+
+type PreviaPlanilha = {
+  identificacao: string | null;
+  colunas: string[];
+  linhas: string[][];
+  total_linhas: number;
+};
 
 type Empresa = { id: string; codigo: string; nome_razao_social: string };
 
@@ -52,7 +60,34 @@ export default function EnvioVendasPage() {
   const [ok, setOk] = useState("");
   const [processandoId, setProcessandoId] = useState<string | null>(null);
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
+  const [visualizando, setVisualizando] = useState<Upload | null>(null);
+  const [urlArquivo, setUrlArquivo] = useState<string | null>(null);
+  const [previa, setPrevia] = useState<PreviaPlanilha | null>(null);
+  const [carregandoArquivo, setCarregandoArquivo] = useState(false);
+  const [erroArquivo, setErroArquivo] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  async function visualizar(u: Upload) {
+    setVisualizando(u);
+    setUrlArquivo(null);
+    setPrevia(null);
+    setErroArquivo("");
+    setCarregandoArquivo(true);
+    try {
+      const { data } = await portalApi.get<{
+        url: string | null;
+        previa: PreviaPlanilha | null;
+        erro_previa: string | null;
+      }>(`/vendas/uploads/${u.id}/arquivo`);
+      setUrlArquivo(data.url);
+      setPrevia(data.previa);
+      if (data.erro_previa) setErroArquivo(data.erro_previa);
+    } catch (err: any) {
+      setErroArquivo(err?.response?.data?.detail ?? "Não foi possível abrir o arquivo.");
+    } finally {
+      setCarregandoArquivo(false);
+    }
+  }
 
   async function carregarUploads() {
     try {
@@ -379,9 +414,17 @@ export default function EnvioVendasPage() {
                         <td className="px-4 py-3 whitespace-nowrap">
                           <button
                             type="button"
+                            onClick={() => visualizar(u)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-navy-200 px-3 py-1 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+                          >
+                            <Icone nome="olho" className="h-3.5 w-3.5" />
+                            Visualizar
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => processar(u.id)}
                             disabled={processandoId === u.id || u.status === "processando"}
-                            className="rounded-lg border border-moss-600 px-3 py-1 text-xs font-semibold text-moss-700 hover:bg-moss-50 disabled:opacity-50"
+                            className="ml-2 rounded-lg border border-moss-600 px-3 py-1 text-xs font-semibold text-moss-700 hover:bg-moss-50 disabled:opacity-50"
                           >
                             {processandoId === u.id
                               ? "Processando..."
@@ -439,7 +482,15 @@ export default function EnvioVendasPage() {
                         <dd className="text-navy-700">{formatarTamanho(u.tamanho_bytes)}</dd>
                       </div>
                     </dl>
-                    <div className="mt-3 flex gap-2">
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => visualizar(u)}
+                        className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-navy-200 px-3 py-1.5 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+                      >
+                        <Icone nome="olho" className="h-3.5 w-3.5" />
+                        Visualizar
+                      </button>
                       <button
                         type="button"
                         onClick={() => processar(u.id)}
@@ -468,6 +519,70 @@ export default function EnvioVendasPage() {
           </>
         )}
       </section>
+
+      <Modal
+        aberto={visualizando !== null}
+        onFechar={() => setVisualizando(null)}
+        titulo={visualizando?.nome_arquivo ?? ""}
+        subtitulo={previa?.identificacao ?? (visualizando ? nomeEmpresa(visualizando.empresa_id) : undefined)}
+        rodape={
+          urlArquivo ? (
+            <a
+              href={urlArquivo}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-moss-700 hover:text-moss-800"
+            >
+              <Icone nome="baixar" className="h-4 w-4" />
+              Baixar planilha completa
+            </a>
+          ) : undefined
+        }
+      >
+        {carregandoArquivo ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-navy-200 border-t-moss-600" />
+            <p className="text-sm text-navy-500">Abrindo a planilha...</p>
+          </div>
+        ) : previa ? (
+          <div className="p-4">
+            <p className="mb-3 text-xs text-navy-500">
+              Mostrando as primeiras {previa.linhas.length} de {previa.total_linhas} linha(s)
+              do arquivo.
+            </p>
+            <div className="overflow-x-auto rounded-lg border border-navy-100 bg-white">
+              <table className="w-full text-xs">
+                <thead className="bg-navy-50 text-navy-700">
+                  <tr>
+                    {previa.colunas.map((c, i) => (
+                      <th key={i} className="whitespace-nowrap px-3 py-2 text-left font-semibold">
+                        {c}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {previa.linhas.map((linha, i) => (
+                    <tr key={i} className="border-t border-navy-100">
+                      {linha.map((celula, j) => (
+                        <td key={j} className="whitespace-nowrap px-3 py-1.5 text-navy-700">
+                          {celula}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {erroArquivo && <p className="mt-3 text-sm text-red-600">{erroArquivo}</p>}
+          </div>
+        ) : erroArquivo ? (
+          <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
+            <Icone nome="alerta" className="h-8 w-8 text-red-500" />
+            <p className="text-sm text-red-600">{erroArquivo}</p>
+          </div>
+        ) : null}
+      </Modal>
     </>
   );
 }
