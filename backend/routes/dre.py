@@ -26,6 +26,7 @@ from fastapi import (
 
 from config import config
 from core.auth import admin_do_cliente, usuario_atual
+from core.base_conhecimento import remover_por_nome_arquivo, remover_resumo_mes
 from core.dre_processamento import processar_upload
 from core.storage import EXPIRACAO_SEGUNDOS, gerar_link_temporario
 from supabase_client import supabase
@@ -617,7 +618,10 @@ async def remover_upload(upload_id: str, usuario: dict = Depends(admin_do_client
         )
         if up.get("empresa_id"):
             q = q.eq("empresa_id", up["empresa_id"])
-        lancamentos_removidos = len(q.execute().data or [])
+        removidos = q.execute().data or []
+        lancamentos_removidos = len(removidos)
+        # O agente não pode continuar citando dado que saiu do sistema.
+        remover_por_nome_arquivo(cliente_id, up["nome_arquivo"])
 
     if up.get("storage_path"):
         try:
@@ -645,4 +649,8 @@ async def remover_lancamento(registro_id: str, usuario: dict = Depends(admin_do_
     )
     if not res.data:
         raise HTTPException(status_code=404, detail="Lançamento não encontrado.")
+
+    linha = res.data[0]
+    if linha.get("empresa_id") and linha.get("mes_referencia"):
+        remover_resumo_mes(cliente_id, linha["empresa_id"], linha["mes_referencia"])
     return {"removido": True}

@@ -40,17 +40,29 @@ _PREFIXOS_REASONING = ("gpt-5",)
 _SYSTEM_PROMPT = """Você é o agente de inteligência financeira do holderjob, um SaaS de \
 CFO/BI para donos de grupos de empresas (redes de unidades/holdings).
 
-POSTURA: você é um conselheiro estratégico, não um bajulador. Analise com \
-espírito crítico: aponte riscos, gargalos, quedas de margem, concentração de \
-receita, meses fracos e contrapontos — mesmo que o usuário não pergunte \
-diretamente. Não valide automaticamente decisões; questione quando os dados \
-sugerirem cautela.
+POSTURA: você é um conselheiro estratégico, não um bajulador nem um relatório. \
+Analise com espírito crítico: aponte riscos, gargalos, quedas de margem, \
+concentração de receita, meses fracos e contrapontos — mesmo que o usuário não \
+pergunte diretamente. Não valide automaticamente decisões; questione quando os \
+dados sugerirem cautela.
+
+COMO RESPONDER (obrigatório):
+- Responda como um consultor falando com o dono: conclusão primeiro, depois o \
+que sustenta a conclusão, depois a recomendação.
+- Seja ENXUTO. Cite apenas os números que sustentam o seu ponto.
+- NUNCA cite nomes de arquivos, planilhas, PDFs, caminhos, IDs ou "fontes". O \
+usuário não quer saber de onde veio o dado, quer saber o que o dado significa. \
+Refira-se sempre à unidade e ao mês (ex.: "Mogi das Cruzes em jan/26").
+- NUNCA despeje listas longas, tabelas extensas nem transcreva o material \
+recebido. Se houver muito dado, sintetize e destaque o que importa.
+- Se a pergunta for sobre uma unidade específica, responda sobre ela — não \
+liste todas as outras sem necessidade.
 
 GOVERNANÇA (regras inegociáveis):
 - NUNCA fabrique ou estime um número que não esteja no CONTEXTO fornecido. \
-Se o contexto não tiver o dado, diga explicitamente que não consta na base \
-(nunca invente um valor aproximado).
-- Toda vez que citar um valor financeiro, deixe claro o mês/empresa a que \
+Se o contexto não tiver o dado, diga de forma simples e direta que a \
+informação ainda não está cadastrada (nunca invente um valor aproximado).
+- Toda vez que citar um valor financeiro, deixe claro o mês/unidade a que \
 ele se refere.
 - Se o contexto trouxer confiabilidade 'baixa' ou divergências sinalizadas, \
 avise o usuário disso antes de tirar conclusões fortes.
@@ -68,8 +80,8 @@ class PerguntaEntrada(BaseModel):
 
 class RespostaAgente(BaseModel):
     resposta: str
-    fontes: list[str]
-    similaridade_maxima: float | None = None  # só preenchido quando não achou contexto (debug)
+    # Diagnóstico interno (não exibido no chat): só vem quando o RAG não achou contexto.
+    similaridade_maxima: float | None = None
 
 
 def _empresa_do_cliente(empresa_id: str, cliente_id: str) -> bool:
@@ -104,8 +116,10 @@ async def perguntar(dados: PerguntaEntrada, usuario: dict = Depends(usuario_atua
         raise HTTPException(status_code=503, detail="Falha ao consultar a base de conhecimento.")
 
     if trechos:
+        # Sem nome de arquivo no contexto: o próprio conteúdo já diz unidade e mês,
+        # e citar a fonte induzia o modelo a devolver lista de arquivos ao usuário.
         contexto_texto = "\n\n".join(
-            f"[Fonte: {t.get('fonte') or t.get('tipo')}]\n{t['conteudo']}" for t in trechos
+            f"--- Registro {i} ---\n{t['conteudo']}" for i, t in enumerate(trechos, 1)
         )
         similaridade_maxima = None
     else:
@@ -121,10 +135,11 @@ async def perguntar(dados: PerguntaEntrada, usuario: dict = Depends(usuario_atua
         {
             "role": "user",
             "content": (
-                "CONTEXTO RECUPERADO DA BASE (use isto como única fonte de números; "
-                "se faltar dado, diga que não consta):\n\n"
+                "DADOS DISPON\u00cdVEIS NA BASE (use como \u00fanica fonte de n\u00fameros; "
+                "se faltar dado, diga que ainda n\u00e3o est\u00e1 cadastrado). "
+                "N\u00e3o transcreva estes registros na resposta \u2014 interprete-os:\n\n"
                 f"{contexto_texto}\n\n"
-                f"PERGUNTA DO USUÁRIO:\n{dados.pergunta}"
+                f"PERGUNTA DO USU\u00c1RIO:\n{dados.pergunta}"
             ),
         },
     ]
@@ -151,7 +166,11 @@ async def perguntar(dados: PerguntaEntrada, usuario: dict = Depends(usuario_atua
         raise HTTPException(status_code=503, detail="Falha ao gerar a resposta do agente.")
 
     fontes = sorted({t.get("fonte") for t in trechos if t.get("fonte")})
-    return RespostaAgente(resposta=resposta, fontes=fontes, similaridade_maxima=similaridade_maxima)
+    logger.info(
+        "Agente respondeu (cliente_id=%s trechos=%d fontes=%d)",
+        cliente_id, len(trechos), len(fontes),
+    )
+    return RespostaAgente(resposta=resposta, similaridade_maxima=similaridade_maxima)
 
 
 @router.post("/reindexar")

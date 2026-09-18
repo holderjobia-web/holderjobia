@@ -14,21 +14,28 @@ type Mensagem = {
   id: string;
   papel: "usuario" | "agente";
   texto: string;
-  fontes?: string[];
 };
 
 type Diagnostico = {
   dre_consolidado_linhas: number | null;
+  vendas_consolidado_linhas: number | null;
   base_conhecimento: Record<string, number> | null;
   openai_api_key_configurada: boolean;
   modelo_chat: string;
+};
+
+type ResultadoReindex = {
+  meses_indexados: number;
+  meses_total: number;
+  falhas: string[];
+  total_falhas: number;
 };
 
 const SUGESTOES = [
   "Como está a margem líquida esse mês?",
   "Resuma a saúde financeira do grupo",
   "Alguma unidade com queda de receita?",
-  "Tem algum risco fiscal a observar?",
+  "Como estão as vendas por categoria?",
 ];
 
 export default function AgentePage() {
@@ -75,14 +82,9 @@ export default function AgentePage() {
         pergunta: texto,
         empresa_id: empresaId || undefined,
       });
-      const fontes = data.fontes as string[] | undefined;
-      const debug =
-        (!fontes || fontes.length === 0) && data.similaridade_maxima != null
-          ? [`(debug) melhor similaridade encontrada: ${Number(data.similaridade_maxima).toFixed(3)}`]
-          : undefined;
       setMensagens((atual) => [
         ...atual,
-        { id: crypto.randomUUID(), papel: "agente", texto: data.resposta, fontes: fontes?.length ? fontes : debug },
+        { id: crypto.randomUUID(), papel: "agente", texto: data.resposta },
       ]);
     } catch (err: any) {
       setErro(err?.response?.data?.detail ?? "Falha ao consultar o agente.");
@@ -102,20 +104,26 @@ export default function AgentePage() {
     setReindexando(true);
     try {
       const { data } = await portalApi.post<{
-        meses_indexados: number;
-        meses_total: number;
-        falhas: string[];
-        total_falhas: number;
+        dre: ResultadoReindex;
+        vendas: ResultadoReindex;
       }>("/agente/reindexar");
-      if (data.total_falhas > 0) {
+      const total = data.dre.meses_total + data.vendas.meses_total;
+      const indexados = data.dre.meses_indexados + data.vendas.meses_indexados;
+      const falhas = data.dre.total_falhas + data.vendas.total_falhas;
+      const exemploFalha = data.dre.falhas[0] ?? data.vendas.falhas[0] ?? "";
+
+      if (total === 0) {
+        setAviso("Nenhum DRE ou venda lançado ainda para indexar.");
+      } else if (falhas > 0) {
         setAviso(
-          `${data.meses_indexados} de ${data.meses_total} mês(es) reindexado(s). ` +
-            `${data.total_falhas} falharam — ex.: ${data.falhas[0] ?? ""}`
+          `${indexados} de ${total} registro(s) reindexado(s). ` +
+            `${falhas} falharam — ex.: ${exemploFalha}`
         );
-      } else if (data.meses_total === 0) {
-        setAviso("Nenhum DRE consolidado encontrado para indexar ainda.");
       } else {
-        setAviso(`Base atualizada: ${data.meses_indexados} mês(es) de DRE reindexado(s).`);
+        setAviso(
+          `Base atualizada: ${data.dre.meses_indexados} de DRE e ` +
+            `${data.vendas.meses_indexados} de vendas reindexado(s).`
+        );
       }
       await carregarDiagnostico();
     } catch (err: any) {
@@ -170,7 +178,7 @@ export default function AgentePage() {
           {carregandoDiag ? "Verificando..." : "Ver diagnóstico"}
         </button>
         <span className="text-xs text-navy-400">
-          Reprocessa os DREs já lançados na base do agente (não altera nenhum dado).
+          Reprocessa os DREs e vendas já lançados na base do agente (não altera nenhum dado).
         </span>
       </div>
       {aviso && <p className="mt-2 text-sm text-moss-700">{aviso}</p>}
@@ -180,31 +188,32 @@ export default function AgentePage() {
           <p className="font-semibold text-navy-700">Diagnóstico da base de dados</p>
           <ul className="mt-1 space-y-0.5">
             <li>
-              Linhas em dre_consolidado: <b>{diagnostico.dre_consolidado_linhas ?? "erro ao consultar"}</b>
+              Lançamentos de DRE: <b>{diagnostico.dre_consolidado_linhas ?? "erro ao consultar"}</b>{" "}
+              · indexados no agente: <b>{diagnostico.base_conhecimento?.dre_resumo ?? 0}</b>
             </li>
             <li>
-              Chunks na base do agente (dre_resumo):{" "}
-              <b>{diagnostico.base_conhecimento?.dre_resumo ?? 0}</b>
+              Lançamentos de vendas: <b>{diagnostico.vendas_consolidado_linhas ?? "erro ao consultar"}</b>{" "}
+              · indexados no agente: <b>{diagnostico.base_conhecimento?.vendas_resumo ?? 0}</b>
             </li>
             <li>
-              Chunks na base do agente (dre_pdf_bruto):{" "}
+              Trechos de PDF indexados:{" "}
               <b>{diagnostico.base_conhecimento?.dre_pdf_bruto ?? 0}</b>
             </li>
             <li>
-              OPENAI_API_KEY configurada:{" "}
+              Chave da IA configurada:{" "}
               <b>{diagnostico.openai_api_key_configurada ? "sim" : "NÃO"}</b> · modelo:{" "}
               <b>{diagnostico.modelo_chat}</b>
             </li>
           </ul>
-          {diagnostico.dre_consolidado_linhas != null &&
-            diagnostico.dre_consolidado_linhas > 0 &&
-            (diagnostico.base_conhecimento?.dre_resumo ?? 0) === 0 && (
-              <p className="mt-2 text-amber-700">
-                Há DRE lançado mas nenhum chunk indexado — clique em &quot;Atualizar
-                base de conhecimento&quot; acima e depois em &quot;Ver
-                diagnóstico&quot; de novo.
-              </p>
-            )}
+          {((diagnostico.dre_consolidado_linhas ?? 0) > 0 &&
+            (diagnostico.base_conhecimento?.dre_resumo ?? 0) === 0) ||
+          ((diagnostico.vendas_consolidado_linhas ?? 0) > 0 &&
+            (diagnostico.base_conhecimento?.vendas_resumo ?? 0) === 0) ? (
+            <p className="mt-2 text-amber-700">
+              Há lançamento sem nada indexado — clique em &quot;Atualizar base de
+              conhecimento&quot; acima e depois em &quot;Ver diagnóstico&quot; de novo.
+            </p>
+          ) : null}
         </div>
       )}
 
@@ -278,12 +287,6 @@ export default function AgentePage() {
                   }`}
                 >
                   {m.papel === "agente" ? <MarkdownSimples texto={m.texto} /> : m.texto}
-                  {m.fontes && m.fontes.length > 0 && (
-                    <p className="mt-2 flex items-start gap-1 text-xs text-navy-400">
-                      <Icone nome="dre" className="h-3 w-3 shrink-0 mt-0.5" />
-                      <span>{m.fontes.join(" · ")}</span>
-                    </p>
-                  )}
                 </div>
               </div>
             ))

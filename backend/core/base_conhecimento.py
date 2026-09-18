@@ -156,6 +156,28 @@ def indexar_resumo_vendas(
     )
 
 
+def remover_por_nome_arquivo(cliente_id: str, nome_arquivo: str) -> None:
+    """Remove TODOS os chunks originados de um arquivo (resumo + texto bruto).
+
+    Usado ao excluir um envio: sem isso o agente continuaria respondendo com
+    números de um arquivo que não existe mais no sistema.
+    """
+    try:
+        (
+            supabase.table("base_conhecimento")
+            .delete()
+            .eq("cliente_id", cliente_id)
+            .ilike("fonte", f"%{nome_arquivo}%")
+            .execute()
+        )
+    except Exception:
+        logger.exception("Falha ao limpar chunks do arquivo (nome=%s)", nome_arquivo)
+
+
+_TIPOS_RESUMO = ("dre_resumo", "vendas_resumo")
+_MAX_CHUNKS_BRUTOS = 2
+
+
 def buscar_contexto(
     cliente_id: str,
     pergunta: str,
@@ -169,6 +191,10 @@ def buscar_contexto(
     (rótulo + número), bem diferente em forma de uma pergunta em linguagem
     natural, e a similaridade de cosseno entre os dois costuma ficar bem abaixo
     de um limiar "intuitivo" tipo 0.5-0.55 mesmo quando o conteúdo é relevante.
+
+    Busca um pouco mais que o necessário e prioriza os RESUMOS (texto derivado e
+    limpo) sobre o texto bruto do PDF: chunk bruto é ruído e, em volume, deixa a
+    resposta do agente confusa.
     """
     embedding = gerar_embedding(pergunta)
     resp = supabase.rpc("match_base_conhecimento", {
@@ -176,9 +202,13 @@ def buscar_contexto(
         "match_cliente_id": cliente_id,
         "match_empresa_id": empresa_id,
         "match_threshold": limiar,
-        "match_count": limite,
+        "match_count": limite * 2,
     }).execute()
-    return resp.data or []
+    encontrados = resp.data or []
+
+    resumos = [t for t in encontrados if t.get("tipo") in _TIPOS_RESUMO]
+    brutos = [t for t in encontrados if t.get("tipo") not in _TIPOS_RESUMO]
+    return (resumos + brutos[:_MAX_CHUNKS_BRUTOS])[:limite]
 
 
 def melhor_similaridade(
