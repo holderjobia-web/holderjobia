@@ -3,9 +3,9 @@
 Fluxo por upload:
   1. Marca vendas_uploads.status = 'processando'.
   2. Baixa o .xlsx do Storage e parseia (core.vendas_parser).
-  3. Para cada mês agregado (derivado da coluna "Pagamento" de cada linha),
-     grava UMA linha em vendas_consolidado (chave: empresa_id + categoria +
-     mes_referencia).
+  3. Para cada par (mês, categoria) — ambos DERIVADOS linha a linha (coluna
+     "Pagamento" e coluna "Dentista") — grava UMA linha em vendas_consolidado
+     (chave: empresa_id + categoria + mes_referencia).
 
 GOVERNANÇA (mesma política do DRE — core/dre_processamento.py):
   - NUNCA fabricar número: campo ausente = NULL (não consta), nunca 0.
@@ -13,6 +13,8 @@ GOVERNANÇA (mesma política do DRE — core/dre_processamento.py):
     sobrescreve silenciosamente os valores existentes.
   - Idêntico ao já gravado = idempotente (skip), mas sempre reindexa o RAG
     (self-heal, mesmo padrão do DRE).
+  - Procedimento não reconhecido vira categoria 'nao_identificado' e é
+    reportado no status — nunca some do total.
 """
 
 import logging
@@ -22,6 +24,7 @@ from typing import Optional
 
 from config import config
 from core.base_conhecimento import indexar_resumo_vendas, remover_resumo_vendas
+from core.vendas_parser import LABEL_CATEGORIA as _LABEL_CATEGORIA
 from core.vendas_parser import parsear_planilha
 from supabase_client import supabase
 
@@ -29,12 +32,6 @@ logger = logging.getLogger(__name__)
 
 _COLUNAS_MONETARIAS = ("valor_original", "valor_desconto", "valor_recebido")
 _TOL_COMPARACAO = Decimal("0.01")
-
-_LABEL_CATEGORIA = {
-    "ortodontia": "Ortodontia",
-    "clinico_geral": "Clínico geral",
-    "implante": "Implante",
-}
 
 
 def _brl(v) -> str:
@@ -102,7 +99,6 @@ def processar_upload(upload: dict) -> dict:
     upload_id = upload["id"]
     cliente_id = upload["cliente_id"]
     empresa_id = upload["empresa_id"]
-    categoria = upload["categoria"]
     storage_path = upload["storage_path"]
 
     _marcar_status(upload_id, "processando")
@@ -146,9 +142,14 @@ def processar_upload(upload: dict) -> dict:
 
     gravados = 0
     divergencias: list[str] = []
+    categorias_detectadas: dict[str, int] = {}
 
     for mes in resultado.meses:
         mes_iso = mes.mes_referencia.isoformat()
+        categoria = mes.categoria
+        categorias_detectadas[categoria] = (
+            categorias_detectadas.get(categoria, 0) + mes.quantidade_vendas
+        )
         valores_mes = {
             "valor_original": mes.valor_original,
             "valor_desconto": mes.valor_desconto,
@@ -221,10 +222,19 @@ def processar_upload(upload: dict) -> dict:
         _marcar_status(upload_id, "erro", detalhe)
         status = "erro"
     else:
-        nota = None
+        partes = []
         if resultado.linhas_invalidas:
-            nota = f"{resultado.linhas_invalidas} linha(s) da planilha ignorada(s) por dado inválido/incompleto."
-        _marcar_status(upload_id, "processado", nota)
+            partes.append(
+                f"{resultado.linhas_invalidas} linha(s) da planilha ignorada(s) "
+                "por dado inválido/incompleto (inclui o rodapé de totais do export)."
+            )
+        if resultado.nao_identificados:
+            partes.append(
+                "Procedimento não reconhecido em: "
+                + ", ".join(resultado.nao_identificados)
+                + " — gravado como 'Não identificado'."
+            )
+        _marcar_status(upload_id, "processado", " ".join(partes) or None)
         status = "processado"
 
     return {
@@ -233,7 +243,11 @@ def processar_upload(upload: dict) -> dict:
         "divergencias": divergencias,
         "linhas_validas": resultado.linhas_validas,
         "linhas_invalidas": resultado.linhas_invalidas,
-        "meses_detectados": [m.mes_referencia.isoformat() for m in resultado.meses],
+        "nao_identificados": resultado.nao_identificados,
+        "categorias_detectadas": {
+            _LABEL_CATEGORIA.get(c, c): qtd for c, qtd in sorted(categorias_detectadas.items())
+        },
+        "meses_detectados": sorted({m.mes_referencia.isoformat() for m in resultado.meses}),
     }
 
 

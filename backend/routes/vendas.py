@@ -39,7 +39,12 @@ router = APIRouter(prefix="/vendas", tags=["vendas"])
 logger = logging.getLogger(__name__)
 
 _MAX_BYTES = 20 * 1024 * 1024  # 20 MB
-_CATEGORIAS_VALIDAS = ("ortodontia", "clinico_geral", "implante")
+# A categoria de cada venda é DERIVADA da planilha (core.vendas_parser); esta
+# lista existe só p/ validar filtros vindos do front.
+_CATEGORIAS_VALIDAS = (
+    "ortodontia", "clinico_geral", "implante",
+    "endodontia", "radiologia", "nao_identificado",
+)
 _CAMPOS_UPLOAD = (
     "id, cliente_id, empresa_id, categoria, nome_arquivo, tamanho_bytes, "
     "mes_referencia, status, erro_detalhe, criado_em"
@@ -112,7 +117,6 @@ async def listar_uploads(
 async def enviar_vendas(
     arquivo: UploadFile = File(...),
     empresa_id: str = Form(...),
-    categoria: str = Form(...),
     mes_referencia: str | None = Form(None),
     usuario: dict = Depends(usuario_atual),
 ):
@@ -124,8 +128,6 @@ async def enviar_vendas(
     _TIPOS_XLSX = ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",)
     if not nome.lower().endswith(_EXTENSOES_XLSX) and tipo not in _TIPOS_XLSX:
         raise HTTPException(status_code=415, detail="Envie um arquivo .xlsx.")
-
-    _validar_categoria(categoria)
 
     if not _empresa_do_cliente(empresa_id, cliente_id):
         raise HTTPException(status_code=404, detail="Empresa não encontrada.")
@@ -159,7 +161,7 @@ async def enviar_vendas(
     payload = {
         "cliente_id": cliente_id,
         "empresa_id": empresa_id,
-        "categoria": categoria,
+        "categoria": None,  # detectada por linha no processamento
         "enviado_por": usuario["id"],
         "nome_arquivo": nome,
         "storage_path": storage_path,
@@ -225,9 +227,12 @@ async def remover_upload(upload_id: str, usuario: dict = Depends(admin_do_client
             .delete()
             .eq("cliente_id", cliente_id)
             .eq("empresa_id", up["empresa_id"])
-            .eq("categoria", up["categoria"])
             .ilike("fonte", f"%{up['nome_arquivo']}%")
         )
+        # Envios antigos eram 1 arquivo por categoria; os novos trazem todas
+        # (categoria NULL no upload) e removem os lançamentos de todas elas.
+        if up.get("categoria"):
+            q = q.eq("categoria", up["categoria"])
         lancamentos_removidos = len(q.execute().data or [])
 
     if up.get("storage_path"):

@@ -1,4 +1,4 @@
-"""Parser de planilhas de Vendas (.xlsx) — ortodontia/implante/clínico geral.
+"""Parser de planilhas de Vendas (.xlsx) — export mensal da clínica.
 
 Mesma governança do parser de DRE (core/dre_parser.py):
 - Extração por RÓTULO: localiza a linha de cabeçalho real (1ª coluna ==
@@ -7,13 +7,21 @@ Mesma governança do parser de DRE (core/dre_parser.py):
 - Cada linha da planilha é 1 venda/parcela recebida. O MÊS de referência é
   DERIVADO da coluna "Pagamento" (data por linha) — nunca do campo informado
   manualmente no upload, que é só um rótulo/metadado do envio.
+- A CATEGORIA do procedimento é DERIVADA da coluna "Dentista", que traz o
+  procedimento como sufixo do nome (ex.: "DRA DENISE ALVES SOUZA ORTO").
+  Um único arquivo mensal pode conter todas as categorias misturadas.
 - FAIL-SAFE: linha sem paciente/data/valor recebido válidos é ignorada e
   contada em `linhas_invalidas`; nunca fabrica valor nem derruba o arquivo
-  inteiro por causa de 1 linha ruim.
+  inteiro por causa de 1 linha ruim. Isso também descarta naturalmente o
+  rodapé de totais do export ("TOTAL GERAL", "BRASILCARD", "PIX"...), que vem
+  sem data de pagamento.
+- Procedimento não reconhecido vira 'nao_identificado' (sinalizado), nunca é
+  descartado nem chutado para outra categoria.
 """
 
 from __future__ import annotations
 
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
@@ -24,10 +32,36 @@ from openpyxl import load_workbook
 
 _COLUNA_HEADER_ESPERADA = "Paciente"
 
+CATEGORIA_NAO_IDENTIFICADA = "nao_identificado"
+
+# Token(s) que aparecem no nome do dentista -> categoria do procedimento.
+# Ordem importa: a primeira regra que casar vence (mais específica primeiro).
+_REGRAS_CATEGORIA: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("IMPLANTE",), "implante"),
+    (("IMPLANTODONTIA",), "implante"),
+    (("ENDO",), "endodontia"),
+    (("ENDODONTIA",), "endodontia"),
+    (("RADIOLOGIA",), "radiologia"),
+    (("ORTO",), "ortodontia"),
+    (("ORTODONTIA",), "ortodontia"),
+    (("CLINICO", "GERAL"), "clinico_geral"),
+    (("C", "GERAL"), "clinico_geral"),
+)
+
+LABEL_CATEGORIA = {
+    "ortodontia": "Ortodontia",
+    "clinico_geral": "Clínico geral",
+    "implante": "Implante",
+    "endodontia": "Endodontia",
+    "radiologia": "Radiologia",
+    CATEGORIA_NAO_IDENTIFICADA: "Não identificado",
+}
+
 
 @dataclass
 class MesAgregado:
     mes_referencia: date
+    categoria: str
     quantidade_vendas: int
     valor_original: Optional[Decimal]
     valor_desconto: Optional[Decimal]
@@ -41,7 +75,38 @@ class ResultadoParseVendas:
     meses: list[MesAgregado] = field(default_factory=list)
     linhas_validas: int = 0
     linhas_invalidas: int = 0
+    nao_identificados: list[str] = field(default_factory=list)
     motivo: Optional[str] = None
+
+
+def _normalizar(texto: str) -> str:
+    """Uppercase sem acento — base da comparação de tokens."""
+    sem_acento = "".join(
+        c for c in unicodedata.normalize("NFKD", texto) if not unicodedata.combining(c)
+    )
+    return sem_acento.upper().strip()
+
+
+def classificar_categoria(dentista) -> str:
+    """Deriva a categoria do procedimento a partir do nome do dentista.
+
+    Casa por TOKEN (palavra inteira), não por substring — evita falso positivo
+    tipo 'ENDO' dentro de um sobrenome. Sem match = 'nao_identificado'.
+    """
+    if not dentista:
+        return CATEGORIA_NAO_IDENTIFICADA
+    tokens = _normalizar(str(dentista)).split()
+    if not tokens:
+        return CATEGORIA_NAO_IDENTIFICADA
+
+    for termos, categoria in _REGRAS_CATEGORIA:
+        n = len(termos)
+        if n == 1:
+            if termos[0] in tokens:
+                return categoria
+        elif any(tuple(tokens[i:i + n]) == termos for i in range(len(tokens) - n + 1)):
+            return categoria
+    return CATEGORIA_NAO_IDENTIFICADA
 
 
 def _parse_valor_brl(bruto) -> Optional[Decimal]:
@@ -85,7 +150,8 @@ def _localizar_header(linhas: list[tuple]) -> Optional[int]:
 
 
 def parsear_planilha(conteudo: bytes) -> ResultadoParseVendas:
-    """Parseia o .xlsx de vendas e agrega por mês (derivado da coluna Pagamento)."""
+    """Parseia o .xlsx de vendas e agrega por (mês, categoria), ambos derivados
+    linha a linha (coluna "Pagamento" e coluna "Dentista")."""
     try:
         wb = load_workbook(BytesIO(conteudo), read_only=True, data_only=True)
         ws = wb.worksheets[0]
@@ -103,7 +169,8 @@ def parsear_planilha(conteudo: bytes) -> ResultadoParseVendas:
             motivo=f"Cabeçalho não encontrado (esperava uma linha com '{_COLUNA_HEADER_ESPERADA}' na 1ª coluna).",
         )
 
-    por_mes: dict[date, list[dict]] = {}
+    grupos: dict[tuple[date, str], list[dict]] = {}
+    nao_identificados: set[str] = set()
     validas = 0
     invalidas = 0
 
@@ -126,9 +193,13 @@ def parsear_planilha(conteudo: bytes) -> ResultadoParseVendas:
             tipo_pagamento_bruto.strip() if isinstance(tipo_pagamento_bruto, str) and tipo_pagamento_bruto.strip()
             else "Não informado"
         )
+        dentista = linha[8] if len(linha) > 8 else None
+        categoria = classificar_categoria(dentista)
+        if categoria == CATEGORIA_NAO_IDENTIFICADA and dentista:
+            nao_identificados.add(str(dentista).strip())
 
         mes_ref = data_pagamento.replace(day=1)
-        por_mes.setdefault(mes_ref, []).append({
+        grupos.setdefault((mes_ref, categoria), []).append({
             "valor_original": valor_original,
             "valor_desconto": valor_desconto,
             "valor_recebido": valor_recebido,
@@ -144,8 +215,9 @@ def parsear_planilha(conteudo: bytes) -> ResultadoParseVendas:
         )
 
     meses: list[MesAgregado] = []
-    for mes_ref in sorted(por_mes):
-        vendas_mes = por_mes[mes_ref]
+    for chave in sorted(grupos):
+        mes_ref, categoria = chave
+        vendas_mes = grupos[chave]
         soma_original = Decimal("0")
         soma_desconto = Decimal("0")
         soma_recebido = Decimal("0")
@@ -166,6 +238,7 @@ def parsear_planilha(conteudo: bytes) -> ResultadoParseVendas:
 
         meses.append(MesAgregado(
             mes_referencia=mes_ref,
+            categoria=categoria,
             quantidade_vendas=len(vendas_mes),
             valor_original=soma_original if tem_original else None,
             valor_desconto=soma_desconto if tem_desconto else None,
@@ -173,4 +246,10 @@ def parsear_planilha(conteudo: bytes) -> ResultadoParseVendas:
             por_forma_pagamento=por_forma,
         ))
 
-    return ResultadoParseVendas(ok=True, meses=meses, linhas_validas=validas, linhas_invalidas=invalidas)
+    return ResultadoParseVendas(
+        ok=True,
+        meses=meses,
+        linhas_validas=validas,
+        linhas_invalidas=invalidas,
+        nao_identificados=sorted(nao_identificados),
+    )

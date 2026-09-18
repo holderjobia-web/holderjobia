@@ -9,7 +9,7 @@ type Empresa = { id: string; codigo: string; nome_razao_social: string };
 type Upload = {
   id: string;
   empresa_id: string | null;
-  categoria: string;
+  categoria: string | null;
   nome_arquivo: string;
   tamanho_bytes: number | null;
   mes_referencia: string | null;
@@ -18,16 +18,13 @@ type Upload = {
   criado_em: string;
 };
 
-const CATEGORIAS = [
-  { valor: "ortodontia", label: "Ortodontia" },
-  { valor: "clinico_geral", label: "Clínico geral" },
-  { valor: "implante", label: "Implante" },
-];
-
 const LABEL_CATEGORIA: Record<string, string> = {
   ortodontia: "Ortodontia",
   clinico_geral: "Clínico geral",
   implante: "Implante",
+  endodontia: "Endodontia",
+  radiologia: "Radiologia",
+  nao_identificado: "Não identificado",
 };
 
 const STATUS_LABEL: Record<string, { texto: string; cor: string; icone: string }> = {
@@ -47,7 +44,6 @@ export default function EnvioVendasPage() {
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);
   const [empresaId, setEmpresaId] = useState("");
-  const [categoria, setCategoria] = useState("");
   const [mes, setMes] = useState("");
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [arrastando, setArrastando] = useState(false);
@@ -93,12 +89,18 @@ export default function EnvioVendasPage() {
         motivo?: string;
         linhas_validas?: number;
         linhas_invalidas?: number;
+        nao_identificados?: string[];
+        categorias_detectadas?: Record<string, number>;
       }>(`/vendas/uploads/${id}/processar`);
       if (data.status === "processado") {
+        const categorias = Object.entries(data.categorias_detectadas ?? {})
+          .map(([nome, qtd]) => `${nome}: ${qtd}`)
+          .join(" · ");
         const partes = [
-          `Processado com sucesso. ${data.gravados ?? 0} mês(es) gravado(s).`,
-          data.linhas_invalidas
-            ? `${data.linhas_invalidas} linha(s) ignorada(s) por dado inválido.`
+          `Processado com sucesso. ${data.gravados ?? 0} lançamento(s) gravado(s).`,
+          categorias ? `Categorias detectadas — ${categorias}.` : "",
+          data.nao_identificados?.length
+            ? `Procedimento não reconhecido em: ${data.nao_identificados.join(", ")}.`
             : "",
         ].filter(Boolean);
         setOk(partes.join(" "));
@@ -159,15 +161,10 @@ export default function EnvioVendasPage() {
       setErro("Selecione a unidade.");
       return;
     }
-    if (!categoria) {
-      setErro("Selecione a categoria.");
-      return;
-    }
 
     const form = new FormData();
     form.append("arquivo", arquivo);
     form.append("empresa_id", empresaId);
-    form.append("categoria", categoria);
     if (mes) form.append("mes_referencia", mes);
 
     setEnviando(true);
@@ -222,8 +219,8 @@ export default function EnvioVendasPage() {
           <div>
             <h2 className="font-semibold text-navy-800">Enviar planilha de Vendas (.xlsx)</h2>
             <p className="text-sm text-navy-500">
-              Até 20 MB. Unidade e categoria são obrigatórias — o mês é detectado
-              automaticamente pela data de cada venda.
+              Até 20 MB. Envie o arquivo mensal completo da unidade — o mês e a
+              categoria de cada procedimento são identificados automaticamente.
             </p>
           </div>
         </div>
@@ -305,23 +302,6 @@ export default function EnvioVendasPage() {
           </div>
           <div>
             <label className="block text-sm font-medium text-navy-700 mb-1">
-              Categoria
-            </label>
-            <select
-              value={categoria}
-              onChange={(e) => setCategoria(e.target.value)}
-              className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
-            >
-              <option value="">— Selecione —</option>
-              {CATEGORIAS.map((c) => (
-                <option key={c.valor} value={c.valor}>
-                  {c.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1">
               Mês de referência (opcional, só rótulo do envio)
             </label>
             <input
@@ -382,7 +362,7 @@ export default function EnvioVendasPage() {
                           {nomeEmpresa(u.empresa_id)}
                         </td>
                         <td className="px-4 py-3 text-navy-600">
-                          {LABEL_CATEGORIA[u.categoria] ?? u.categoria}
+                          {u.categoria ? LABEL_CATEGORIA[u.categoria] ?? u.categoria : "Todas (automático)"}
                         </td>
                         <td className="px-4 py-3 text-navy-600">
                           {formatarTamanho(u.tamanho_bytes)}
@@ -450,7 +430,9 @@ export default function EnvioVendasPage() {
                       </div>
                       <div>
                         <dt className="text-navy-400">Categoria</dt>
-                        <dd className="text-navy-700">{LABEL_CATEGORIA[u.categoria] ?? u.categoria}</dd>
+                        <dd className="text-navy-700">
+                          {u.categoria ? LABEL_CATEGORIA[u.categoria] ?? u.categoria : "Todas (automático)"}
+                        </dd>
                       </div>
                       <div>
                         <dt className="text-navy-400">Tamanho</dt>

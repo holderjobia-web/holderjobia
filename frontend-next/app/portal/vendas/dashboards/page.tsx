@@ -39,12 +39,18 @@ const CATEGORIAS = [
   { valor: "ortodontia", label: "Ortodontia" },
   { valor: "clinico_geral", label: "Clínico geral" },
   { valor: "implante", label: "Implante" },
+  { valor: "endodontia", label: "Endodontia" },
+  { valor: "radiologia", label: "Radiologia" },
+  { valor: "nao_identificado", label: "Não identificado" },
 ];
 
 const LABEL_CATEGORIA: Record<string, string> = {
   ortodontia: "Ortodontia",
   clinico_geral: "Clínico geral",
   implante: "Implante",
+  endodontia: "Endodontia",
+  radiologia: "Radiologia",
+  nao_identificado: "Não identificado",
 };
 
 const MESES_ABREV = [
