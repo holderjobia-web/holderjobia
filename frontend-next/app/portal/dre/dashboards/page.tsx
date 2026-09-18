@@ -206,11 +206,11 @@ export default function DashboardsPage() {
             <KpiCard titulo="Retirada (acum.)" valor={moeda(retiradaTotal)} />
           </div>
 
-          <section className="mt-6 rounded-xl bg-white border border-navy-100 p-5 shadow-sm">
+          <section className="mt-6 rounded-xl bg-white border border-navy-100 p-4 shadow-sm sm:p-5">
             <h2 className="font-semibold text-navy-800 mb-4">
               Evolução mensal — Receita líquida × Lucro líquido
             </h2>
-            <div className="h-80">
+            <div className="h-64 sm:h-80">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={dadosGrafico}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
