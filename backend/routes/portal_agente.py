@@ -10,11 +10,11 @@ contexto recuperado, e diz claramente quando não tem dado suficiente.
 
 Rota (exige JWT do portal — JWT_SECRET):
   POST /agente/perguntar   → busca contexto (RAG) + chama o GPT
-  POST /agente/reindexar   → backfill: reindexa o RAG a partir do dre_consolidado
-                             já gravado (admin_do_cliente) — útil p/ DREs lançados
-                             antes da Etapa 7 existir.
-  GET  /agente/diagnostico → quantas linhas existem em dre_consolidado x quantos
-                             chunks existem na base_conhecimento (admin_do_cliente).
+
+Rotas de SUPORTE (sem botão no portal — a indexação é automática ao processar
+um envio; estas existem só para backfill/troubleshooting via API):
+  POST /agente/reindexar   → reindexa o RAG a partir do que já está gravado
+  GET  /agente/diagnostico → compara lançamentos gravados x chunks indexados
 """
 
 import logging

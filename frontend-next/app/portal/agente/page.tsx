@@ -16,21 +16,6 @@ type Mensagem = {
   texto: string;
 };
 
-type Diagnostico = {
-  dre_consolidado_linhas: number | null;
-  vendas_consolidado_linhas: number | null;
-  base_conhecimento: Record<string, number> | null;
-  openai_api_key_configurada: boolean;
-  modelo_chat: string;
-};
-
-type ResultadoReindex = {
-  meses_indexados: number;
-  meses_total: number;
-  falhas: string[];
-  total_falhas: number;
-};
-
 const SUGESTOES = [
   "Como está a margem líquida esse mês?",
   "Resuma a saúde financeira do grupo",
@@ -46,10 +31,6 @@ export default function AgentePage() {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
-  const [reindexando, setReindexando] = useState(false);
-  const [aviso, setAviso] = useState("");
-  const [diagnostico, setDiagnostico] = useState<Diagnostico | null>(null);
-  const [carregandoDiag, setCarregandoDiag] = useState(false);
   const fimRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -98,53 +79,6 @@ export default function AgentePage() {
     await perguntar(pergunta.trim());
   }
 
-  async function reindexarBase() {
-    setErro("");
-    setAviso("");
-    setReindexando(true);
-    try {
-      const { data } = await portalApi.post<{
-        dre: ResultadoReindex;
-        vendas: ResultadoReindex;
-      }>("/agente/reindexar");
-      const total = data.dre.meses_total + data.vendas.meses_total;
-      const indexados = data.dre.meses_indexados + data.vendas.meses_indexados;
-      const falhas = data.dre.total_falhas + data.vendas.total_falhas;
-      const exemploFalha = data.dre.falhas[0] ?? data.vendas.falhas[0] ?? "";
-
-      if (total === 0) {
-        setAviso("Nenhum DRE ou venda lançado ainda para indexar.");
-      } else if (falhas > 0) {
-        setAviso(
-          `${indexados} de ${total} registro(s) reindexado(s). ` +
-            `${falhas} falharam — ex.: ${exemploFalha}`
-        );
-      } else {
-        setAviso(
-          `Base atualizada: ${data.dre.meses_indexados} de DRE e ` +
-            `${data.vendas.meses_indexados} de vendas reindexado(s).`
-        );
-      }
-      await carregarDiagnostico();
-    } catch (err: any) {
-      setErro(err?.response?.data?.detail ?? "Falha ao atualizar a base de conhecimento.");
-    } finally {
-      setReindexando(false);
-    }
-  }
-
-  async function carregarDiagnostico() {
-    setCarregandoDiag(true);
-    try {
-      const { data } = await portalApi.get<Diagnostico>("/agente/diagnostico");
-      setDiagnostico(data);
-    } catch (err: any) {
-      setErro(err?.response?.data?.detail ?? "Falha ao carregar o diagnóstico.");
-    } finally {
-      setCarregandoDiag(false);
-    }
-  }
-
   const empresaSelecionada = empresas.find((e) => e.id === empresaId) ?? null;
 
   return (
@@ -157,65 +91,6 @@ export default function AgentePage() {
         titulo="Contexto da conversa"
         descricao="Selecione uma empresa para focar a conversa nela, ou deixe em branco para falar sobre todo o grupo."
       />
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={reindexarBase}
-          disabled={reindexando}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-navy-100 px-3 py-1.5 text-xs font-semibold text-navy-600 hover:border-moss-400 hover:bg-moss-50 disabled:opacity-60"
-        >
-          <Icone nome="atualizar" className="h-3.5 w-3.5" />
-          {reindexando ? "Atualizando..." : "Atualizar base de conhecimento"}
-        </button>
-        <button
-          type="button"
-          onClick={carregarDiagnostico}
-          disabled={carregandoDiag}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-navy-100 px-3 py-1.5 text-xs font-semibold text-navy-600 hover:border-moss-400 hover:bg-moss-50 disabled:opacity-60"
-        >
-          <Icone nome="alerta" className="h-3.5 w-3.5" />
-          {carregandoDiag ? "Verificando..." : "Ver diagnóstico"}
-        </button>
-        <span className="text-xs text-navy-400">
-          Reprocessa os DREs e vendas já lançados na base do agente (não altera nenhum dado).
-        </span>
-      </div>
-      {aviso && <p className="mt-2 text-sm text-moss-700">{aviso}</p>}
-
-      {diagnostico && (
-        <div className="mt-3 rounded-lg border border-navy-100 bg-navy-50/40 p-3 text-xs text-navy-600">
-          <p className="font-semibold text-navy-700">Diagnóstico da base de dados</p>
-          <ul className="mt-1 space-y-0.5">
-            <li>
-              Lançamentos de DRE: <b>{diagnostico.dre_consolidado_linhas ?? "erro ao consultar"}</b>{" "}
-              · indexados no agente: <b>{diagnostico.base_conhecimento?.dre_resumo ?? 0}</b>
-            </li>
-            <li>
-              Lançamentos de vendas: <b>{diagnostico.vendas_consolidado_linhas ?? "erro ao consultar"}</b>{" "}
-              · indexados no agente: <b>{diagnostico.base_conhecimento?.vendas_resumo ?? 0}</b>
-            </li>
-            <li>
-              Trechos de PDF indexados:{" "}
-              <b>{diagnostico.base_conhecimento?.dre_pdf_bruto ?? 0}</b>
-            </li>
-            <li>
-              Chave da IA configurada:{" "}
-              <b>{diagnostico.openai_api_key_configurada ? "sim" : "NÃO"}</b> · modelo:{" "}
-              <b>{diagnostico.modelo_chat}</b>
-            </li>
-          </ul>
-          {((diagnostico.dre_consolidado_linhas ?? 0) > 0 &&
-            (diagnostico.base_conhecimento?.dre_resumo ?? 0) === 0) ||
-          ((diagnostico.vendas_consolidado_linhas ?? 0) > 0 &&
-            (diagnostico.base_conhecimento?.vendas_resumo ?? 0) === 0) ? (
-            <p className="mt-2 text-amber-700">
-              Há lançamento sem nada indexado — clique em &quot;Atualizar base de
-              conhecimento&quot; acima e depois em &quot;Ver diagnóstico&quot; de novo.
-            </p>
-          ) : null}
-        </div>
-      )}
 
       <section className="mt-4 flex h-[65vh] flex-col overflow-hidden rounded-xl bg-white border border-navy-100 shadow-sm">
         <div className="flex items-center justify-between gap-2 border-b border-navy-100 px-5 py-3">
