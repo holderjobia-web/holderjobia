@@ -1,9 +1,20 @@
+@import "@fontsource/manrope/400.css";
+@import "@fontsource/manrope/500.css";
+@import "@fontsource/manrope/600.css";
+@import "@fontsource/manrope/700.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  --font-sans: "Inter", system-ui, -apple-system, sans-serif;
+  --font-sans: "Manrope", sans-serif;
+  --surface: #ffffff;
+  --canvas: #f5f6f7;
+  --ink: #232e34;
+  --muted: #5d6970;
+  --line: #e4e7e9;
+  --accent: #23684f;
 }
 
 html,
@@ -13,14 +24,41 @@ body {
 }
 
 body {
-  color: #152439;
-  background-color: #f6f7f4;
+  color: var(--ink);
+  background-color: var(--canvas);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
 }
 
-/* Fundo institucional com degradê azul marinho → verde musgo (telas de login) */
 .bg-institucional {
-  background: radial-gradient(1200px 600px at 20% -10%, #233c5e 0%, transparent 55%),
-    linear-gradient(135deg, #0f1a2c 0%, #1b2f4a 55%, #414c2c 120%);
+  background: #232e34;
+}
+
+@layer base {
+  button, input, select, textarea { font: inherit; }
+  button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  button:disabled { cursor: not-allowed; }
+  input, select, textarea { min-width: 0; }
+  input, textarea { accent-color: var(--accent); }
+  th { font-size: 0.75rem; }
+  td { font-variant-numeric: tabular-nums; }
+  ::selection { background: #dceee5; color: #184536; }
+}
+
+@layer components {
+  .field { @apply w-full rounded-lg border border-navy-200 bg-white px-3 py-2.5 text-sm text-navy-800 outline-none focus:border-moss-600 focus:ring-2 focus:ring-moss-600/10; }
+  .button-primary { @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-moss-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-moss-700 disabled:opacity-50; }
+  .button-secondary { @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-navy-200 bg-white px-3 py-2 text-sm font-medium text-navy-700 hover:bg-navy-50 disabled:opacity-50; }
+  .icon-button { @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-navy-500 hover:bg-navy-100 hover:text-navy-800 disabled:opacity-50; }
+  .workspace-content { @apply min-w-0; }
+  .workspace-content > section { border-radius: 0; box-shadow: none; }
+  .workspace-content table tbody tr:hover { background: #fafbfb; }
+  .auth-surface { background-image: linear-gradient(#e4e7e955 1px, transparent 1px), linear-gradient(90deg, #e4e7e955 1px, transparent 1px); background-size: 64px 64px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { portalApi, savePortalToken } from "@/lib/portal-api";
+import { AuthFrame, PasswordField } from "@/components/auth-frame";
 
 export default function PortalLoginPage() {
   const router = useRouter();
@@ -40,23 +41,17 @@ export default function PortalLoginPage() {
   }
 
   return (
-    <main className="bg-institucional min-h-screen flex items-center justify-center px-6">
-      <div className="w-full max-w-md animate-fade-in">
-        <div className="text-center text-white mb-8">
-          <p className="text-moss-300 font-semibold tracking-[0.25em] text-xs uppercase">
-            holderjob
-          </p>
-          <h1 className="mt-2 text-2xl font-bold">Portal do Cliente</h1>
-        </div>
-
+    <AuthFrame titulo="Acesse sua conta" subtitulo="Portal do cliente">
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl shadow-xl p-8 space-y-5"
+          className="space-y-5"
         >
           <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1">E-mail</label>
+            <label htmlFor="email" className="block text-sm font-medium text-navy-700 mb-2">E-mail</label>
             <input
+              id="email"
               type="email"
+              autoComplete="username"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -64,18 +59,9 @@ export default function PortalLoginPage() {
             />
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1">Senha</label>
-            <input
-              type="password"
-              required
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              className="w-full rounded-lg border border-navy-100 px-3 py-2 outline-none focus:border-moss-500 focus:ring-2 focus:ring-moss-500/20"
-            />
-          </div>
+          <PasswordField value={senha} onChange={setSenha} />
 
-          {erro && <p className="text-sm text-red-600">{erro}</p>}
+          {erro && <p role="alert" className="text-sm text-red-600">{erro}</p>}
 
           <button
             type="submit"
@@ -85,7 +71,6 @@ export default function PortalLoginPage() {
             {carregando ? "Entrando..." : "Entrar"}
           </button>
         </form>
-      </div>
-    </main>
+    </AuthFrame>
   );
 }

@@ -40,7 +40,7 @@ def extrair_texto(nome_arquivo: str, conteudo: bytes) -> Optional[str]:
             return conteudo.decode("utf-8", errors="ignore").strip() or None
     except Exception:
         logger.exception("Falha ao extrair texto (arquivo=%s extensao=%s)", nome_arquivo, extensao)
-        return None
+        raise ValueError("Não foi possível ler o conteúdo do arquivo. Verifique se ele está íntegro.")
 
     return None  # extensão sem parser disponível (imagem, dwg, docx, etc.)
 

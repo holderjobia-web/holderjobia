@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import PortalShell from "@/components/portal-shell";
-import { Icone } from "@/components/icons";
+import { ArrowUp, ArrowUpRight, Copy, Check, RotateCcw, LoaderCircle } from "lucide-react";
 import { MarkdownSimples } from "@/components/markdown-simples";
 import { SeletorEmpresa, type EmpresaOpcao, type RedeOpcao } from "@/components/seletor-empresa";
 import { portalApi } from "@/lib/portal-api";
@@ -14,6 +14,7 @@ type Mensagem = {
   id: string;
   papel: "usuario" | "agente";
   texto: string;
+  contexto: string;
 };
 
 const SUGESTOES = [
@@ -31,7 +32,8 @@ export default function AgentePage() {
   const [mensagens, setMensagens] = useState<Mensagem[]>([]);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
-  const fimRef = useRef<HTMLDivElement>(null);
+  const [copiada, setCopiada] = useState("");
+  const conversaRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     Promise.all([
@@ -46,14 +48,16 @@ export default function AgentePage() {
   }, []);
 
   useEffect(() => {
-    fimRef.current?.scrollIntoView({ behavior: "smooth" });
+    const conversa = conversaRef.current;
+    if (conversa) conversa.scrollTo({ top: conversa.scrollHeight, behavior: "smooth" });
   }, [mensagens, enviando]);
 
   async function perguntar(texto: string) {
     if (!texto || enviando) return;
 
     setErro("");
-    const minhaMsg: Mensagem = { id: crypto.randomUUID(), papel: "usuario", texto };
+    const contexto = empresas.find((empresa) => empresa.id === empresaId)?.nome_razao_social ?? "Todo o grupo";
+    const minhaMsg: Mensagem = { id: crypto.randomUUID(), papel: "usuario", texto, contexto };
     setMensagens((atual) => [...atual, minhaMsg]);
     setPergunta("");
     setEnviando(true);
@@ -65,10 +69,11 @@ export default function AgentePage() {
       });
       setMensagens((atual) => [
         ...atual,
-        { id: crypto.randomUUID(), papel: "agente", texto: data.resposta },
+        { id: crypto.randomUUID(), papel: "agente", texto: data.resposta, contexto },
       ]);
     } catch (err: any) {
       setErro(err?.response?.data?.detail ?? "Falha ao consultar o agente.");
+      setPergunta(texto);
     } finally {
       setEnviando(false);
     }
@@ -81,124 +86,51 @@ export default function AgentePage() {
 
   const empresaSelecionada = empresas.find((e) => e.id === empresaId) ?? null;
 
+  async function copiar(mensagem: Mensagem) {
+    try { await navigator.clipboard.writeText(mensagem.texto); setCopiada(mensagem.id); }
+    catch { setErro("Não foi possível copiar a resposta."); }
+  }
+
   return (
-    <PortalShell titulo="Agente de IA">
+    <PortalShell titulo="Agente IA">
       <SeletorEmpresa
         empresas={empresas}
         redes={redes}
         value={empresaId}
         onChange={setEmpresaId}
         titulo="Contexto da conversa"
-        descricao="Selecione uma empresa para focar a conversa nela, ou deixe em branco para falar sobre todo o grupo."
+        disabled={enviando}
       />
 
-      <section className="mt-4 flex h-[65vh] flex-col overflow-hidden rounded-xl bg-white border border-navy-100 shadow-sm">
-        <div className="flex items-center justify-between gap-2 border-b border-navy-100 px-5 py-3">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-moss-50 text-moss-700">
-              <Icone nome="agente" className="h-4 w-4" />
+      <section className="mt-5 flex h-[640px] max-h-[80dvh] min-h-[420px] flex-col border-y border-navy-100 bg-white lg:h-[calc(100dvh-390px)]">
+        <div className="flex items-center justify-between gap-3 border-b border-navy-100 px-4 py-3 sm:px-6">
+          <div className="min-w-0"><h2 className="text-sm font-semibold text-navy-800">Análise financeira</h2><p className="mt-1 truncate text-xs text-navy-500" title={empresaSelecionada?.nome_razao_social}>{empresaSelecionada ? `${empresaSelecionada.codigo} - ${empresaSelecionada.nome_razao_social}` : "Todo o grupo"}</p></div>
+          <button type="button" disabled={enviando || !mensagens.length} title="Nova conversa" aria-label="Nova conversa" onClick={() => { if (window.confirm("Limpar esta conversa?")) { setMensagens([]); setErro(""); setCopiada(""); } }} className="icon-button"><RotateCcw size={17} /></button>
+        </div>
+        <div ref={conversaRef} role="log" aria-live="polite" aria-busy={enviando} aria-label="Conversa com o agente" className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-8">
+          {mensagens.length === 0 ? <div className="mx-auto max-w-2xl py-10 sm:py-14">
+            <p className="mb-2 text-xs font-semibold uppercase text-moss-700">Visão de gestão</p>
+            <h3 className="mb-8 text-xl font-medium text-navy-900">O que precisa de atenção hoje?</h3>
+            <div className="divide-y divide-navy-100 border-y border-navy-100">
+              {SUGESTOES.map((sugestao) => <button key={sugestao} type="button" onClick={() => perguntar(sugestao)} className="flex min-h-14 w-full items-center justify-between gap-4 py-3 text-left text-sm text-navy-600 hover:text-moss-700"><span>{sugestao}</span><ArrowUpRight size={16} className="shrink-0" /></button>)}
             </div>
-            <p className="text-sm font-semibold text-navy-800">
-              {empresaSelecionada
-                ? `Falando sobre ${empresaSelecionada.codigo} — ${empresaSelecionada.nome_razao_social}`
-                : "Falando sobre todo o grupo"}
-            </p>
+          </div> : <div className="mx-auto max-w-3xl divide-y divide-navy-100">
+            {mensagens.map((mensagem) => <article key={mensagem.id} className="py-6">
+              <div className="mb-3 flex items-center justify-between gap-3"><p className="min-w-0 text-xs font-semibold text-navy-500">{mensagem.papel === "usuario" ? "Você" : "Análise"}<span className="ml-2 break-words font-normal text-navy-400">{mensagem.contexto}</span></p>
+                {mensagem.papel === "agente" && <button type="button" title={copiada === mensagem.id ? "Resposta copiada" : "Copiar resposta"} aria-label={copiada === mensagem.id ? "Resposta copiada" : "Copiar resposta"} onClick={() => copiar(mensagem)} className="icon-button">{copiada === mensagem.id ? <Check size={15} /> : <Copy size={15} />}</button>}
+              </div>
+              <div className={`break-words text-sm leading-7 text-navy-800 ${mensagem.papel === "usuario" ? "whitespace-pre-wrap font-medium" : ""}`}>{mensagem.papel === "agente" ? <MarkdownSimples texto={mensagem.texto} /> : mensagem.texto}</div>
+            </article>)}
+          </div>}
+          {enviando && <p role="status" className="mx-auto flex max-w-3xl items-center gap-3 pb-6 text-sm text-navy-500"><LoaderCircle size={16} className="animate-spin" />Consultando os dados...</p>}
+        </div>
+        {erro && <p role="alert" className="px-5 py-2 text-sm text-red-600">{erro}</p>}
+        <form onSubmit={enviar} className="border-t border-navy-100 p-4 sm:px-6">
+          <label htmlFor="pergunta-agente" className="sr-only">Sua pergunta</label>
+          <div className="flex items-end gap-3">
+            <textarea id="pergunta-agente" rows={2} maxLength={2000} value={pergunta} onChange={(event) => setPergunta(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) { event.preventDefault(); enviar(event); } }} placeholder="Escreva sua pergunta..." className="field min-h-20 flex-1 resize-none" />
+            <button type="submit" disabled={enviando || !pergunta.trim()} title="Enviar pergunta" aria-label="Enviar pergunta" className="button-primary h-11 w-11 shrink-0 px-0"><ArrowUp size={20} /></button>
           </div>
-          {mensagens.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setMensagens([])}
-              className="text-xs font-medium text-navy-400 hover:text-red-600"
-            >
-              Limpar conversa
-            </button>
-          )}
-        </div>
-
-        <div className="flex-1 space-y-4 overflow-y-auto p-5">
-          {mensagens.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-moss-50 text-moss-700">
-                <Icone nome="agente" className="h-6 w-6" />
-              </div>
-              <p className="max-w-sm text-sm text-navy-500">
-                Pergunte sobre margem, evolução de receita, retirada, orçamento ou
-                sócios. O agente responde só com base nos dados já cadastrados e
-                avisa quando não tiver informação suficiente.
-              </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {SUGESTOES.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => perguntar(s)}
-                    className="rounded-full border border-navy-100 px-3 py-1.5 text-xs text-navy-600 hover:border-moss-400 hover:bg-moss-50"
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            mensagens.map((m) => (
-              <div
-                key={m.id}
-                className={`flex items-end gap-2 ${m.papel === "usuario" ? "flex-row-reverse" : ""}`}
-              >
-                <div
-                  className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-                    m.papel === "usuario"
-                      ? "bg-navy-700 text-white"
-                      : "bg-moss-100 text-moss-700"
-                  }`}
-                >
-                  <Icone nome={m.papel === "usuario" ? "empresas" : "agente"} className="h-3.5 w-3.5" />
-                </div>
-                <div
-                  className={`max-w-[80%] rounded-xl px-4 py-3 text-sm ${
-                    m.papel === "usuario"
-                      ? "whitespace-pre-wrap bg-navy-700 text-white"
-                      : "bg-moss-50 text-navy-800 border border-moss-100"
-                  }`}
-                >
-                  {m.papel === "agente" ? <MarkdownSimples texto={m.texto} /> : m.texto}
-                </div>
-              </div>
-            ))
-          )}
-
-          {enviando && (
-            <div className="flex items-end gap-2">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-moss-100 text-moss-700">
-                <Icone nome="agente" className="h-3.5 w-3.5" />
-              </div>
-              <div className="flex items-center gap-1 rounded-xl border border-moss-100 bg-moss-50 px-4 py-3">
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-moss-400 [animation-delay:-0.3s]" />
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-moss-400 [animation-delay:-0.15s]" />
-                <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-moss-400" />
-              </div>
-            </div>
-          )}
-          <div ref={fimRef} />
-        </div>
-
-        {erro && <p className="px-5 pb-2 text-sm text-red-600">{erro}</p>}
-
-        <form onSubmit={enviar} className="flex gap-2 border-t border-navy-100 p-3">
-          <input
-            value={pergunta}
-            onChange={(e) => setPergunta(e.target.value)}
-            placeholder="Ex.: como está a margem líquida da rede nos últimos 3 meses?"
-            className="flex-1 rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
-          />
-          <button
-            type="submit"
-            disabled={enviando || !pergunta.trim()}
-            className="flex items-center gap-1.5 rounded-lg bg-moss-600 px-4 py-2 text-sm font-semibold text-white hover:bg-moss-700 disabled:opacity-60"
-          >
-            Enviar
-            <Icone nome="enviar" className="h-4 w-4" />
-          </button>
         </form>
       </section>
     </PortalShell>

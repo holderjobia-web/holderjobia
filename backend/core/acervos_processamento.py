@@ -21,11 +21,10 @@ def processar_indexacao(upload: dict, conteudo: bytes) -> dict:
     gravado), 'sem_texto' (extensão sem parser — não é erro) ou 'erro'
     (parser rodou mas a indexação falhou, ex.: OpenAI/Supabase fora do ar).
     """
-    texto = extrair_texto(upload["nome_arquivo"], conteudo)
-    if texto is None:
-        return {"status": "sem_texto", "erro_detalhe": None}
-
     try:
+        texto = extrair_texto(upload["nome_arquivo"], conteudo)
+        if texto is None:
+            return {"status": "sem_texto", "erro_detalhe": None}
         indexar_texto_acervo(
             upload["cliente_id"], upload["empresa_id"], upload["nome_arquivo"],
             texto, upload["categoria"],

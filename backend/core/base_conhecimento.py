@@ -164,10 +164,12 @@ def indexar_texto_acervo(
     plantas/documentos_gerais, útil pra filtrar/depurar depois."""
     reindexar_fonte(cliente_id, fonte, "acervo_bruto")
     for chunk in _quebrar_em_chunks(texto):
-        _indexar_chunk(
+        erro = _indexar_chunk(
             cliente_id, chunk, "acervo_bruto",
             empresa_id=empresa_id, fonte=fonte, categoria=categoria,
         )
+        if erro:
+            raise RuntimeError("Não foi possível disponibilizar todo o texto para consulta.")
 
 
 def remover_por_nome_arquivo(cliente_id: str, nome_arquivo: str) -> None:

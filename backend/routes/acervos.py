@@ -17,8 +17,10 @@ extrair texto) roda automaticamente no upload.
 
 import logging
 import uuid
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi.responses import Response
 
 from config import config
 from core.acervos_extracao import extensao_de, previa_csv
@@ -38,6 +40,13 @@ _CATEGORIAS_VALIDAS = ("contrato", "planilha_obra", "fotos", "plantas", "documen
 _EXT_IMAGEM = ("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg")
 _EXT_OFFICE = ("doc", "docx", "ppt", "pptx")
 _EXT_TEXTO = ("txt", "md", "log")
+_MIME_SEGUROS = {
+    "pdf": "application/pdf", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+    "png": "image/png", "gif": "image/gif", "webp": "image/webp", "bmp": "image/bmp",
+    "txt": "text/plain", "md": "text/plain", "log": "text/plain", "csv": "text/csv",
+    "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+}
 
 _CAMPOS_UPLOAD = (
     "id, cliente_id, empresa_id, categoria, nome_arquivo, extensao, "
@@ -138,7 +147,10 @@ async def enviar_arquivos(
         extensao = extensao_de(nome)
         storage_path = f"{cliente_id}/{uuid.uuid4()}.{extensao}" if extensao else f"{cliente_id}/{uuid.uuid4()}"
         try:
-            supabase.storage.from_(config.ACERVOS_BUCKET).upload(storage_path, conteudo)
+            supabase.storage.from_(config.ACERVOS_BUCKET).upload(
+                storage_path, conteudo,
+                {"content-type": _MIME_SEGUROS.get(extensao, "application/octet-stream")},
+            )
         except Exception as e:
             corpo = getattr(getattr(e, "response", None), "text", "") or repr(e)
             logger.exception(
@@ -177,6 +189,34 @@ async def enviar_arquivos(
         resultados.append(registro)
 
     return resultados
+
+
+@router.get("/uploads/{upload_id}/conteudo")
+def conteudo_arquivo(upload_id: str, usuario: dict = Depends(usuario_atual)):
+    res = (
+        supabase.table("acervos_uploads")
+        .select("nome_arquivo, storage_path")
+        .eq("id", upload_id)
+        .eq("cliente_id", usuario["cliente_id"])
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+    upload = res.data[0]
+    try:
+        conteudo = supabase.storage.from_(config.ACERVOS_BUCKET).download(upload["storage_path"])
+    except Exception:
+        logger.exception("Falha ao baixar acervo (upload=%s)", upload_id)
+        raise HTTPException(status_code=502, detail="Não foi possível abrir o arquivo.")
+    extensao = extensao_de(upload["nome_arquivo"])
+    mime = _MIME_SEGUROS.get(extensao, "application/octet-stream")
+    disposicao = "inline" if mime == "application/pdf" or mime.startswith(("image/", "text/")) else "attachment"
+    return Response(conteudo, media_type=mime, headers={
+        "Content-Disposition": f"{disposicao}; filename*=UTF-8''{quote(upload['nome_arquivo'], safe='')}",
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+    })
 
 
 @router.get("/uploads/{upload_id}/arquivo")

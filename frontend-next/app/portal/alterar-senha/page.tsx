@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { portalApi } from "@/lib/portal-api";
+import { AuthFrame } from "@/components/auth-frame";
 
 /** Requisitos de senha (defesa em profundidade — o backend também valida). */
 function validarForcaSenha(senha: string): string[] {
@@ -52,21 +53,10 @@ export default function AlterarSenhaPage() {
   }
 
   return (
-    <main className="bg-institucional min-h-screen flex items-center justify-center px-6">
-      <div className="w-full max-w-md animate-fade-in">
-        <div className="text-center text-white mb-8">
-          <p className="text-moss-300 font-semibold tracking-[0.25em] text-xs uppercase">
-            holderjob
-          </p>
-          <h1 className="mt-2 text-2xl font-bold">Defina uma nova senha</h1>
-          <p className="text-navy-100 text-sm mt-1">
-            Por segurança, altere a senha temporária antes de continuar.
-          </p>
-        </div>
-
+    <AuthFrame titulo="Defina uma nova senha" subtitulo="Atualização de acesso">
         <form
           onSubmit={handleSubmit}
-          className="bg-white rounded-2xl shadow-xl p-8 space-y-5"
+          className="space-y-5"
         >
           <div>
             <label className="block text-sm font-medium text-navy-700 mb-1">
@@ -117,7 +107,6 @@ export default function AlterarSenhaPage() {
             {carregando ? "Salvando..." : "Salvar nova senha"}
           </button>
         </form>
-      </div>
-    </main>
+    </AuthFrame>
   );
 }

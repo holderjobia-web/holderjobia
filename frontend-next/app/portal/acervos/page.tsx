@@ -2,6 +2,8 @@
 
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import PortalShell from "@/components/portal-shell";
+import Image from "next/image";
+import { ChevronDown, Search, Upload as UploadIcon, Trash2 } from "lucide-react";
 import { Icone } from "@/components/icons";
 import { Modal } from "@/components/modal";
 import { EmpresaOpcao, RedeOpcao, SeletorEmpresa } from "@/components/seletor-empresa";
@@ -34,10 +36,10 @@ const LABEL_CATEGORIA: Record<string, string> = Object.fromEntries(
 );
 
 const STATUS_LABEL: Record<string, { texto: string; cor: string; icone: string }> = {
-  recebido: { texto: "Recebido", cor: "bg-navy-100 text-navy-700", icone: "relogio" },
-  indexado: { texto: "Indexado no agente", cor: "bg-moss-100 text-moss-800", icone: "check" },
-  sem_texto: { texto: "Guardado", cor: "bg-navy-100 text-navy-600", icone: "arquivo" },
-  erro: { texto: "Erro ao indexar", cor: "bg-red-100 text-red-700", icone: "alerta" },
+  recebido: { texto: "Em análise", cor: "bg-navy-100 text-navy-700", icone: "relogio" },
+  indexado: { texto: "Disponível ao agente", cor: "bg-moss-100 text-moss-800", icone: "check" },
+  sem_texto: { texto: "Somente arquivo", cor: "bg-navy-100 text-navy-600", icone: "arquivo" },
+  erro: { texto: "Consulta indisponível", cor: "bg-red-100 text-red-700", icone: "alerta" },
 };
 
 function formatarTamanho(bytes: number | null): string {
@@ -75,6 +77,17 @@ export default function AcervosPage() {
   const [previa, setPrevia] = useState<PreviaTabela | null>(null);
   const [carregandoArquivo, setCarregandoArquivo] = useState(false);
   const [erroArquivo, setErroArquivo] = useState("");
+  const [textoArquivo, setTextoArquivo] = useState("");
+  const requisicaoArquivo = useRef<AbortController | null>(null);
+
+  useEffect(() => () => { if (urlArquivo) URL.revokeObjectURL(urlArquivo); }, [urlArquivo]);
+  useEffect(() => () => requisicaoArquivo.current?.abort(), []);
+
+  function fecharArquivo() {
+    requisicaoArquivo.current?.abort();
+    setVisualizando(null);
+    setUrlArquivo(null);
+  }
 
   async function carregarUploads() {
     try {
@@ -190,10 +203,15 @@ export default function AcervosPage() {
   }
 
   async function visualizar(u: Upload) {
+    requisicaoArquivo.current?.abort();
+    const controller = new AbortController();
+    requisicaoArquivo.current = controller;
     setVisualizando(u);
     setUrlArquivo(null);
     setPrevia(null);
     setErroArquivo("");
+    setTextoArquivo("");
+    setTipoArquivo("outro");
     setCarregandoArquivo(true);
     try {
       const { data } = await portalApi.get<{
@@ -201,15 +219,22 @@ export default function AcervosPage() {
         tipo: string;
         previa: PreviaTabela | null;
         erro_previa: string | null;
-      }>(`/acervos/uploads/${u.id}/arquivo`);
-      setUrlArquivo(data.url);
+      }>(`/acervos/uploads/${u.id}/arquivo`, { signal: controller.signal });
+      const { data: conteudo } = await portalApi.get<Blob>(`/acervos/uploads/${u.id}/conteudo`, {
+        responseType: "blob", signal: controller.signal,
+      });
+      const texto = data.tipo === "texto" ? await conteudo.text() : "";
+      if (controller.signal.aborted) return;
+      setUrlArquivo(URL.createObjectURL(conteudo));
+      setTextoArquivo(texto);
       setTipoArquivo(data.tipo);
       setPrevia(data.previa);
       if (data.erro_previa) setErroArquivo(data.erro_previa);
     } catch (err: any) {
+      if (controller.signal.aborted) return;
       setErroArquivo(err?.response?.data?.detail ?? "Não foi possível abrir o arquivo.");
     } finally {
-      setCarregandoArquivo(false);
+      if (!controller.signal.aborted) setCarregandoArquivo(false);
     }
   }
 
@@ -231,21 +256,10 @@ export default function AcervosPage() {
 
   return (
     <PortalShell titulo="Acervos">
-      <section className="rounded-xl bg-white border border-navy-100 p-5 shadow-sm sm:p-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-moss-50 text-moss-700">
-            <Icone nome="upload" className="h-5 w-5" />
-          </div>
-          <div>
-            <h2 className="font-semibold text-navy-800">Enviar arquivos</h2>
-            <p className="text-sm text-navy-500">
-              Até 50 MB por arquivo, qualquer formato. Contratos/planilhas/CSV/texto
-              alimentam automaticamente o agente de IA.
-            </p>
-          </div>
-        </div>
+      <details className="group border-y border-navy-100 bg-white px-4 sm:px-5">
+        <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-3 py-4 text-sm font-semibold text-navy-800 [&::-webkit-details-marker]:hidden"><span className="flex items-center gap-3"><UploadIcon size={18} className="text-moss-700" />Novo envio</span><ChevronDown size={16} className="group-open:rotate-180" /></summary>
 
-        <form onSubmit={enviar} className="mt-5 grid gap-4 sm:grid-cols-2">
+        <form onSubmit={enviar} className="grid gap-4 pb-5 sm:grid-cols-2">
           <div className="sm:col-span-2">
             <div
               onDragOver={(e) => {
@@ -255,7 +269,11 @@ export default function AcervosPage() {
               onDragLeave={() => setArrastando(false)}
               onDrop={onDrop}
               onClick={() => fileRef.current?.click()}
-              className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-8 text-center transition-colors ${
+              role="button"
+              tabIndex={0}
+              aria-label="Selecionar arquivos"
+              onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); fileRef.current?.click(); } }}
+              className={`flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-5 text-center transition-colors ${
                 arrastando
                   ? "border-moss-500 bg-moss-50"
                   : "border-navy-200 bg-navy-50/40 hover:border-moss-400 hover:bg-moss-50"
@@ -298,8 +316,9 @@ export default function AcervosPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1">Unidade</label>
+              <label htmlFor="unidade-upload" className="block text-sm font-medium text-navy-700 mb-1">Unidade</label>
             <select
+              id="unidade-upload"
               value={empresaUploadId}
               onChange={(e) => setEmpresaUploadId(e.target.value)}
               className="w-full rounded-lg border border-navy-100 px-3 py-2 text-sm text-navy-800 outline-none focus:border-moss-500"
@@ -314,23 +333,8 @@ export default function AcervosPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-navy-700 mb-1">Categoria</label>
-            <div className="flex flex-wrap gap-2">
-              {CATEGORIAS.map((c) => (
-                <button
-                  key={c.valor}
-                  type="button"
-                  onClick={() => setCategoriaUpload(c.valor)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    categoriaUpload === c.valor
-                      ? "bg-moss-600 text-white"
-                      : "bg-navy-50 text-navy-600 hover:bg-navy-100"
-                  }`}
-                >
-                  {c.label}
-                </button>
-              ))}
-            </div>
+            <label htmlFor="categoria-upload" className="block text-sm font-medium text-navy-700 mb-1">Categoria</label>
+            <select id="categoria-upload" value={categoriaUpload} onChange={(event) => setCategoriaUpload(event.target.value)} className="field"><option value="">Selecione</option>{CATEGORIAS.map((categoria) => <option key={categoria.valor} value={categoria.valor}>{categoria.label}</option>)}</select>
           </div>
 
           <div className="sm:col-span-2">
@@ -350,17 +354,18 @@ export default function AcervosPage() {
             <button
               type="submit"
               disabled={enviando}
-              className="w-full rounded-lg bg-moss-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-moss-700 disabled:opacity-60 sm:w-auto"
+              className="button-primary w-full sm:w-auto"
             >
+              <UploadIcon size={16} />
               {enviando ? "Enviando..." : "Enviar"}
             </button>
           </div>
         </form>
-        {erro && <p className="mt-3 text-sm text-red-600">{erro}</p>}
-        {ok && <p className="mt-3 text-sm text-moss-700">{ok}</p>}
-      </section>
+      </details>
+      {erro && <p role="alert" className="my-3 break-words text-sm text-red-600">{erro}</p>}
+      {ok && <p role="status" className="my-3 text-sm text-moss-700">{ok}</p>}
 
-      <section className="mt-6 rounded-xl bg-white border border-navy-100 p-5 shadow-sm">
+      <div className="mt-6">
         <SeletorEmpresa
           empresas={empresas}
           redes={redes}
@@ -370,41 +375,21 @@ export default function AcervosPage() {
           descricao="Deixe sem seleção para ver arquivos de todas as unidades."
         />
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setFiltroCategoria("")}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-              filtroCategoria === "" ? "bg-navy-700 text-white" : "bg-navy-50 text-navy-600 hover:bg-navy-100"
-            }`}
-          >
-            Todas as categorias
-          </button>
-          {CATEGORIAS.map((c) => (
-            <button
-              key={c.valor}
-              type="button"
-              onClick={() => setFiltroCategoria(c.valor)}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
-                filtroCategoria === c.valor ? "bg-navy-700 text-white" : "bg-navy-50 text-navy-600 hover:bg-navy-100"
-              }`}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-
-        <div className="relative mt-3">
-          <Icone nome="olho" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy-300" />
+        <div className="mt-4 grid gap-3 sm:grid-cols-[1fr_240px]">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-navy-400" />
           <input
             type="text"
+            aria-label="Buscar arquivos"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar por nome do arquivo..."
-            className="w-full rounded-lg border border-navy-100 py-2 pl-9 pr-3 text-sm text-navy-800 outline-none focus:border-moss-500"
+            className="field pl-9"
           />
         </div>
-      </section>
+        <select aria-label="Filtrar categoria" value={filtroCategoria} onChange={(event) => setFiltroCategoria(event.target.value)} className="field"><option value="">Todas as categorias</option>{CATEGORIAS.map((categoria) => <option key={categoria.valor} value={categoria.valor}>{categoria.label}</option>)}</select>
+        </div>
+      </div>
 
       <section className="mt-6 rounded-xl bg-white border border-navy-100 shadow-sm overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-navy-100">
@@ -427,7 +412,7 @@ export default function AcervosPage() {
                     <th className="text-left font-semibold px-4 py-3">Unidade</th>
                     <th className="text-left font-semibold px-4 py-3">Categoria</th>
                     <th className="text-left font-semibold px-4 py-3">Tamanho</th>
-                    <th className="text-left font-semibold px-4 py-3">Status</th>
+                    <th className="text-left font-semibold px-4 py-3">Consulta pelo agente</th>
                     <th className="text-left font-semibold px-4 py-3">Ações</th>
                   </tr>
                 </thead>
@@ -455,7 +440,7 @@ export default function AcervosPage() {
                         <td className="px-4 py-3">
                           <span
                             className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${st.cor}`}
-                            title={u.erro_detalhe ?? undefined}
+                            title={u.erro_detalhe ?? (u.status === "sem_texto" ? "Arquivo salvo, sem texto extraível para consulta." : "Arquivo salvo; texto disponível para consulta.")}
                           >
                             <Icone nome={st.icone} className="h-3.5 w-3.5" />
                             {st.texto}
@@ -474,9 +459,11 @@ export default function AcervosPage() {
                             type="button"
                             onClick={() => excluir(u)}
                             disabled={excluindoId === u.id}
-                            className="ml-2 rounded-lg border border-red-300 px-3 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            title="Excluir arquivo"
+                            aria-label={`Excluir ${u.nome_arquivo}`}
+                            className="icon-button ml-1 hover:text-red-600"
                           >
-                            {excluindoId === u.id ? "Excluindo..." : "Excluir"}
+                            <Trash2 size={16} />
                           </button>
                         </td>
                       </tr>
@@ -497,7 +484,7 @@ export default function AcervosPage() {
                       </p>
                       <span
                         className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium ${st.cor}`}
-                        title={u.erro_detalhe ?? undefined}
+                        title={u.erro_detalhe ?? (u.status === "sem_texto" ? "Arquivo salvo, sem texto extraível para consulta." : "Arquivo salvo; texto disponível para consulta.")}
                       >
                         <Icone nome={st.icone} className="h-3.5 w-3.5" />
                         {st.texto}
@@ -545,14 +532,14 @@ export default function AcervosPage() {
 
       <Modal
         aberto={visualizando !== null}
-        onFechar={() => setVisualizando(null)}
+        onFechar={fecharArquivo}
         titulo={visualizando?.nome_arquivo ?? ""}
         subtitulo={visualizando ? nomeEmpresa(visualizando.empresa_id) : undefined}
         rodape={
           urlArquivo ? (
             <a
               href={urlArquivo}
-              target="_blank"
+              download={visualizando?.nome_arquivo}
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-sm font-semibold text-moss-700 hover:text-moss-800"
             >
@@ -571,7 +558,7 @@ export default function AcervosPage() {
           <iframe src={urlArquivo} title="Visualização do arquivo" className="h-full w-full" />
         ) : tipoArquivo === "imagem" && urlArquivo ? (
           <div className="flex h-full items-center justify-center p-4">
-            <img src={urlArquivo} alt={visualizando?.nome_arquivo} className="max-h-full max-w-full rounded-lg object-contain" />
+            <Image unoptimized width={1200} height={900} src={urlArquivo} alt={visualizando?.nome_arquivo ?? "Anexo"} className="max-h-full max-w-full object-contain" />
           </div>
         ) : (tipoArquivo === "xlsx" || tipoArquivo === "csv") && previa ? (
           <div className="p-4">
@@ -603,14 +590,8 @@ export default function AcervosPage() {
               </table>
             </div>
           </div>
-        ) : tipoArquivo === "office" && urlArquivo ? (
-          <iframe
-            src={`https://docs.google.com/gview?url=${encodeURIComponent(urlArquivo)}&embedded=true`}
-            title="Visualização do arquivo"
-            className="h-full w-full"
-          />
-        ) : (tipoArquivo === "texto" || tipoArquivo === "outro") && urlArquivo ? (
-          <iframe src={urlArquivo} title="Visualização do arquivo" className="h-full w-full" />
+        ) : tipoArquivo === "texto" && urlArquivo ? (
+          <pre className="whitespace-pre-wrap break-words p-6 text-sm text-navy-800">{textoArquivo}</pre>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
             <Icone nome="alerta" className="h-8 w-8 text-red-500" />
