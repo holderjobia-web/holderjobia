@@ -6,6 +6,7 @@ obra, Fotos, Plantas, Documentos em geral. Upload em lote, multi-extensão
 Rotas (exigem JWT do portal — JWT_SECRET):
   POST   /acervos/uploads             → recebe 1+ arquivos (multipart), salva e indexa
   GET    /acervos/uploads             → lista os arquivos do cliente (filtro empresa/categoria/busca)
+  PATCH  /acervos/uploads/{id}        → corrige unidade, categoria e/ou descrição
   GET    /acervos/uploads/{id}/arquivo → link temporário + prévia (quando aplicável)
   DELETE /acervos/uploads/{id}        → remove o arquivo (Storage + base de conhecimento)
 
@@ -21,12 +22,13 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import Response
+from pydantic import BaseModel
 
 from config import config
 from core.acervos_extracao import extensao_de, previa_csv
 from core.acervos_processamento import processar_indexacao
 from core.auth import admin_do_cliente, usuario_atual
-from core.base_conhecimento import remover_por_nome_arquivo
+from core.base_conhecimento import atualizar_chunks_acervo, remover_por_nome_arquivo
 from core.storage import EXPIRACAO_SEGUNDOS, gerar_link_temporario
 from core.vendas_parser import previa_planilha
 from supabase_client import supabase
@@ -36,7 +38,9 @@ router = APIRouter(prefix="/acervos", tags=["acervos"])
 logger = logging.getLogger(__name__)
 
 _MAX_BYTES = 50 * 1024 * 1024  # 50 MB — fotos/plantas costumam ser maiores que PDFs de DRE
-_CATEGORIAS_VALIDAS = ("contrato", "planilha_obra", "fotos", "plantas", "documentos_gerais")
+_CATEGORIAS_VALIDAS = (
+    "contrato", "planilha_obra", "fotos", "plantas", "controle_mensal", "documentos_gerais",
+)
 _EXT_IMAGEM = ("jpg", "jpeg", "png", "gif", "webp", "bmp", "svg")
 _EXT_OFFICE = ("doc", "docx", "ppt", "pptx")
 _EXT_TEXTO = ("txt", "md", "log")
@@ -189,6 +193,70 @@ async def enviar_arquivos(
         resultados.append(registro)
 
     return resultados
+
+
+class UploadAtualizar(BaseModel):
+    empresa_id: str | None = None
+    categoria: str | None = None
+    descricao: str | None = None
+
+
+@router.patch("/uploads/{upload_id}")
+async def atualizar_upload(
+    upload_id: str,
+    dados: UploadAtualizar,
+    usuario: dict = Depends(usuario_atual),
+):
+    """Corrige unidade/categoria/descrição de um arquivo já enviado, sem reenviar.
+    O que o agente já indexou do arquivo acompanha a correção."""
+    cliente_id = usuario["cliente_id"]
+    campos = dados.model_dump(exclude_unset=True)
+    if not campos:
+        raise HTTPException(status_code=422, detail="Nenhum campo para atualizar.")
+    if "empresa_id" in campos and not campos["empresa_id"]:
+        raise HTTPException(status_code=422, detail="Selecione a unidade.")
+    if "categoria" in campos:
+        _validar_categoria(campos["categoria"] or "")
+    if "descricao" in campos:
+        campos["descricao"] = (campos["descricao"] or "").strip() or None
+
+    res = (
+        supabase.table("acervos_uploads")
+        .select("id, empresa_id, categoria, nome_arquivo")
+        .eq("id", upload_id)
+        .eq("cliente_id", cliente_id)
+        .limit(1)
+        .execute()
+    )
+    if not res.data:
+        raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
+    atual = res.data[0]
+
+    if "empresa_id" in campos and not _empresa_do_cliente(campos["empresa_id"], cliente_id):
+        raise HTTPException(status_code=404, detail="Empresa não encontrada.")
+
+    atualizado = (
+        supabase.table("acervos_uploads")
+        .update(campos)
+        .eq("id", upload_id)
+        .eq("cliente_id", cliente_id)
+        .execute()
+    )
+    if not atualizado.data:
+        raise HTTPException(status_code=500, detail="Falha ao atualizar o arquivo.")
+
+    nova_empresa = campos.get("empresa_id", atual["empresa_id"])
+    nova_categoria = campos.get("categoria", atual["categoria"])
+    if nova_empresa != atual["empresa_id"] or nova_categoria != atual["categoria"]:
+        atualizar_chunks_acervo(
+            cliente_id, atual["nome_arquivo"],
+            empresa_antiga=atual["empresa_id"], categoria_antiga=atual["categoria"],
+            empresa_nova=nova_empresa, categoria_nova=nova_categoria,
+        )
+
+    registro = atualizado.data[0]
+    registro.pop("storage_path", None)
+    return registro
 
 
 @router.get("/uploads/{upload_id}/conteudo")

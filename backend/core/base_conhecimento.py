@@ -172,6 +172,31 @@ def indexar_texto_acervo(
             raise RuntimeError("Não foi possível disponibilizar todo o texto para consulta.")
 
 
+def atualizar_chunks_acervo(
+    cliente_id: str,
+    nome_arquivo: str,
+    empresa_antiga: str,
+    categoria_antiga: str,
+    empresa_nova: str,
+    categoria_nova: str,
+) -> None:
+    """Acompanha a correção de unidade/categoria de um arquivo de Acervos nos
+    chunks já indexados, sem regerar embeddings (o texto não mudou)."""
+    try:
+        (
+            supabase.table("base_conhecimento")
+            .update({"empresa_id": empresa_nova, "categoria": categoria_nova})
+            .eq("cliente_id", cliente_id)
+            .eq("tipo", "acervo_bruto")
+            .eq("fonte", nome_arquivo)
+            .eq("empresa_id", empresa_antiga)
+            .eq("categoria", categoria_antiga)
+            .execute()
+        )
+    except Exception:
+        logger.exception("Falha ao atualizar chunks do acervo (nome=%s)", nome_arquivo)
+
+
 def remover_por_nome_arquivo(cliente_id: str, nome_arquivo: str) -> None:
     """Remove TODOS os chunks originados de um arquivo (resumo + texto bruto).
 

@@ -3,7 +3,7 @@
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import PortalShell from "@/components/portal-shell";
 import Image from "next/image";
-import { ChevronDown, Search, Upload as UploadIcon, Trash2 } from "lucide-react";
+import { ChevronDown, Pencil, Search, Upload as UploadIcon, Trash2 } from "lucide-react";
 import { Icone } from "@/components/icons";
 import { Modal } from "@/components/modal";
 import { EmpresaOpcao, RedeOpcao, SeletorEmpresa } from "@/components/seletor-empresa";
@@ -29,6 +29,7 @@ const CATEGORIAS: { valor: string; label: string }[] = [
   { valor: "planilha_obra", label: "Planilha de obra" },
   { valor: "fotos", label: "Fotos" },
   { valor: "plantas", label: "Plantas" },
+  { valor: "controle_mensal", label: "Controle mensal de contas pagas" },
   { valor: "documentos_gerais", label: "Documentos em geral" },
 ];
 const LABEL_CATEGORIA: Record<string, string> = Object.fromEntries(
@@ -69,6 +70,14 @@ export default function AcervosPage() {
   const [ok, setOk] = useState("");
   const [excluindoId, setExcluindoId] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Edição de unidade/categoria/descrição
+  const [editando, setEditando] = useState<Upload | null>(null);
+  const [editEmpresaId, setEditEmpresaId] = useState("");
+  const [editCategoria, setEditCategoria] = useState("");
+  const [editDescricao, setEditDescricao] = useState("");
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
+  const [erroEdicao, setErroEdicao] = useState("");
 
   // Modal de visualização
   const [visualizando, setVisualizando] = useState<Upload | null>(null);
@@ -235,6 +244,35 @@ export default function AcervosPage() {
       setErroArquivo(err?.response?.data?.detail ?? "Não foi possível abrir o arquivo.");
     } finally {
       if (!controller.signal.aborted) setCarregandoArquivo(false);
+    }
+  }
+
+  function abrirEdicao(u: Upload) {
+    setEditando(u);
+    setEditEmpresaId(u.empresa_id);
+    setEditCategoria(u.categoria);
+    setEditDescricao(u.descricao ?? "");
+    setErroEdicao("");
+  }
+
+  async function salvarEdicao(e: FormEvent) {
+    e.preventDefault();
+    if (!editando) return;
+    setErroEdicao("");
+    setSalvandoEdicao(true);
+    try {
+      await portalApi.patch(`/acervos/uploads/${editando.id}`, {
+        empresa_id: editEmpresaId,
+        categoria: editCategoria,
+        descricao: editDescricao.trim() || null,
+      });
+      setEditando(null);
+      setOk("Informações do arquivo atualizadas.");
+      await carregarUploads();
+    } catch (err: any) {
+      setErroEdicao(err?.response?.data?.detail ?? "Falha ao salvar as alterações.");
+    } finally {
+      setSalvandoEdicao(false);
     }
   }
 
@@ -457,6 +495,15 @@ export default function AcervosPage() {
                           </button>
                           <button
                             type="button"
+                            onClick={() => abrirEdicao(u)}
+                            title="Editar unidade e categoria"
+                            aria-label={`Editar ${u.nome_arquivo}`}
+                            className="icon-button ml-1"
+                          >
+                            <Pencil size={16} />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => excluir(u)}
                             disabled={excluindoId === u.id}
                             title="Excluir arquivo"
@@ -512,6 +559,14 @@ export default function AcervosPage() {
                       >
                         <Icone nome="olho" className="h-3.5 w-3.5" />
                         Visualizar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => abrirEdicao(u)}
+                        className="inline-flex flex-1 items-center justify-center gap-1 rounded-lg border border-navy-200 px-3 py-1.5 text-xs font-semibold text-navy-600 hover:bg-navy-50"
+                      >
+                        <Pencil size={14} />
+                        Editar
                       </button>
                       <button
                         type="button"
@@ -600,6 +655,66 @@ export default function AcervosPage() {
             </p>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        aberto={editando !== null}
+        onFechar={() => setEditando(null)}
+        titulo="Editar arquivo"
+        subtitulo={editando?.nome_arquivo}
+        compacto
+      >
+        <form onSubmit={salvarEdicao} className="grid gap-4 bg-white p-4 sm:p-5">
+          <div>
+            <label htmlFor="unidade-edicao" className="mb-1 block text-sm font-medium text-navy-700">Unidade</label>
+            <select
+              id="unidade-edicao"
+              value={editEmpresaId}
+              onChange={(e) => setEditEmpresaId(e.target.value)}
+              className="field"
+              required
+            >
+              {empresas.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.codigo} — {emp.nome_razao_social}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="categoria-edicao" className="mb-1 block text-sm font-medium text-navy-700">Categoria</label>
+            <select
+              id="categoria-edicao"
+              value={editCategoria}
+              onChange={(e) => setEditCategoria(e.target.value)}
+              className="field"
+              required
+            >
+              {CATEGORIAS.map((categoria) => (
+                <option key={categoria.valor} value={categoria.valor}>{categoria.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label htmlFor="descricao-edicao" className="mb-1 block text-sm font-medium text-navy-700">Descrição (opcional)</label>
+            <textarea
+              id="descricao-edicao"
+              value={editDescricao}
+              onChange={(e) => setEditDescricao(e.target.value)}
+              rows={2}
+              className="field"
+            />
+          </div>
+          {erroEdicao && <p role="alert" className="break-words text-sm text-red-600">{erroEdicao}</p>}
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button type="button" onClick={() => setEditando(null)} className="rounded-lg border border-navy-200 px-4 py-2 text-sm font-semibold text-navy-600 hover:bg-navy-50">
+              Cancelar
+            </button>
+            <button type="submit" disabled={salvandoEdicao} className="button-primary">
+              {salvandoEdicao ? "Salvando..." : "Salvar"}
+            </button>
+          </div>
+        </form>
       </Modal>
     </PortalShell>
   );

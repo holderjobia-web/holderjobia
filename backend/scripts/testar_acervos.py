@@ -80,6 +80,30 @@ class AcervosTests(unittest.TestCase):
         with patch("core.dre_parser.extrair_texto_pdf", side_effect=ValueError("PDF invalido")), self.assertLogs(level="ERROR"):
             self.assertEqual(acervos_processamento.processar_indexacao(self.upload, b"invalido")["status"], "erro")
 
+    def test_editar_categoria_e_unidade_acompanha_o_agente(self):
+        banco = self.banco()
+        dados = acervos.UploadAtualizar(empresa_id="empresa-2", categoria="controle_mensal")
+        with patch.object(acervos, "supabase", banco), patch.object(acervos, "atualizar_chunks_acervo") as chunks:
+            asyncio.run(acervos.atualizar_upload("arquivo-1", dados, usuario=self.usuario))
+        banco.table.return_value.update.assert_called_once_with(
+            {"empresa_id": "empresa-2", "categoria": "controle_mensal"}
+        )
+        chunks.assert_called_once_with(
+            "cliente-1", "Contrato.PDF",
+            empresa_antiga="empresa-1", categoria_antiga="contrato",
+            empresa_nova="empresa-2", categoria_nova="controle_mensal",
+        )
+
+    def test_editar_rejeita_categoria_invalida_e_empresa_de_outro_cliente(self):
+        banco = self.banco()
+        with patch.object(acervos, "supabase", banco), self.assertRaises(HTTPException) as erro:
+            asyncio.run(acervos.atualizar_upload("arquivo-1", acervos.UploadAtualizar(categoria="xyz"), usuario=self.usuario))
+        self.assertEqual(erro.exception.status_code, 422)
+        with patch.object(acervos, "supabase", banco), patch.object(acervos, "_empresa_do_cliente", return_value=False), self.assertRaises(HTTPException) as erro:
+            asyncio.run(acervos.atualizar_upload("arquivo-1", acervos.UploadAtualizar(empresa_id="de-outro"), usuario=self.usuario))
+        self.assertEqual(erro.exception.status_code, 404)
+        banco.table.return_value.update.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

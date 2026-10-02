@@ -11,6 +11,7 @@ export function Modal({
   onFechar,
   children,
   rodape,
+  compacto = false,
 }: {
   titulo: string;
   subtitulo?: string;
@@ -18,6 +19,7 @@ export function Modal({
   onFechar: () => void;
   children: ReactNode;
   rodape?: ReactNode;
+  compacto?: boolean;
 }) {
   const painelRef = useRef<HTMLDivElement>(null);
   const fecharRef = useRef(onFechar);
@@ -65,7 +67,9 @@ export function Modal({
         ref={painelRef}
         tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
-        className="flex h-[92dvh] w-full max-w-4xl flex-col overflow-hidden rounded-t-xl bg-white shadow-xl outline-none sm:h-[85dvh] sm:rounded-xl"
+        className={`flex w-full max-w-4xl flex-col overflow-hidden rounded-t-xl bg-white shadow-xl outline-none sm:rounded-xl ${
+          compacto ? "max-h-[92dvh] sm:max-w-lg" : "h-[92dvh] sm:h-[85dvh]"
+        }`}
       >
         <div className="flex items-start justify-between gap-3 border-b border-navy-100 px-4 py-3 sm:px-5">
           <div className="min-w-0">
