@@ -16,13 +16,14 @@ GOVERNANÇA (regras do JOB):
 """
 
 import logging
+import re
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
 from config import config
 from core.base_conhecimento import indexar_resumo_mes, indexar_texto_bruto, remover_resumo_mes
-from core.dre_parser import extrair_texto_pdf, parsear
+from core.dre_parser import _normalizar, extrair_texto_pdf, parsear
 from supabase_client import supabase
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,33 @@ def _difere(db_val, parsed: Optional[Decimal]) -> bool:
         return True
 
 
+def _unidade_confere(unidade_pdf: Optional[str], empresa_cadastro: str) -> bool:
+    """True se o nome da unidade impresso no PDF bate com o cadastro (código + nome).
+    Sem unidade no PDF não há o que conferir."""
+    if not unidade_pdf:
+        return True
+    alvo = _normalizar(empresa_cadastro)
+    palavras = [p for p in re.findall(r"[A-Z0-9]+", _normalizar(unidade_pdf)) if len(p) >= 3]
+    return all(p in alvo for p in palavras)
+
+
+def _outra_unidade_do_pdf(cliente_id: str, empresa_id: str, unidade_pdf: Optional[str]) -> Optional[str]:
+    """Se o nome impresso no PDF corresponde a OUTRA unidade do cliente, devolve essa
+    unidade. Só bloqueia com evidência positiva (cabeçalho com marca/logo não bloqueia)."""
+    res = (
+        supabase.table("empresas")
+        .select("id,codigo,nome_razao_social")
+        .eq("cliente_id", cliente_id)
+        .neq("id", empresa_id)
+        .execute()
+    )
+    for emp in res.data or []:
+        cadastro = f"{emp['codigo']} {emp['nome_razao_social']}"
+        if _unidade_confere(unidade_pdf, cadastro):
+            return f"{emp['codigo']} — {emp['nome_razao_social']}"
+    return None
+
+
 def _marcar_status(upload_id: str, status: str, erro_detalhe: Optional[str] = None) -> None:
     supabase.table("dre_uploads").update({
         "status": status,
@@ -148,6 +176,7 @@ def processar_upload(upload: dict) -> dict:
         fonte += f" (unidade no arquivo: {resultado.unidade_texto})"
 
     empresa_nome = empresa_id
+    empresa_cadastro = ""
     try:
         emp = (
             supabase.table("empresas")
@@ -158,8 +187,20 @@ def processar_upload(upload: dict) -> dict:
         )
         if emp.data:
             empresa_nome = f"{emp.data[0]['codigo']} — {emp.data[0]['nome_razao_social']}"
+            empresa_cadastro = f"{emp.data[0]['codigo']} {emp.data[0]['nome_razao_social']}"
     except Exception:
         logger.exception("Falha ao buscar nome da empresa p/ indexação RAG (empresa_id=%s)", empresa_id)
+
+    if empresa_cadastro and not _unidade_confere(resultado.unidade_texto, empresa_cadastro):
+        outra = _outra_unidade_do_pdf(cliente_id, empresa_id, resultado.unidade_texto)
+        if outra:
+            motivo = (
+                f"O PDF é da unidade '{resultado.unidade_texto}' (cadastrada como '{outra}'), mas o "
+                f"envio foi associado a '{empresa_nome}'. Nada foi gravado. Exclua este envio e "
+                "reenvie escolhendo a unidade correta."
+            )
+            _marcar_status(upload_id, "erro", motivo)
+            return {"status": "erro", "motivo": motivo}
 
     # RAG: indexa o texto bruto do PDF já validado (best-effort, não derruba o processamento)
     indexar_texto_bruto(cliente_id, empresa_id, fonte, texto_pdf)
@@ -188,7 +229,9 @@ def processar_upload(upload: dict) -> dict:
             ]
             if difs:
                 # Divergência: NÃO sobrescreve; anexa nota de rastreabilidade.
-                divergencias.append(f"{mes_iso} ({', '.join(difs)})")
+                origem = atual.get("fonte") or "origem não registrada"
+                campos = "todos os campos" if len(difs) == len(_COLUNAS_MONETARIAS) else ", ".join(difs)
+                divergencias.append(f"{mes_iso} ({campos}) — já existia lançamento vindo de: {origem}")
                 nota = (
                     f"[{datetime.now(timezone.utc).date().isoformat()}] "
                     f"Divergência vs {fonte} em: {', '.join(difs)}. "

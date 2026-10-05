@@ -1,0 +1,21 @@
+{
+  "descricao": "DRE CLINICAS mensal com R$ e % com ponto, SEM subtotal de impostos (VALINHOS fev/2026). Impostos fica nulo (não consta), sem fabricar 0",
+  "unidade": "VALINHOS",
+  "total_meses": 1,
+  "confiabilidade_todos": "alta",
+  "esperado": {
+    "2026-02-01": {
+      "receita_bruta": "209789.00",
+      "impostos": null,
+      "devolucoes": "3059.85",
+      "receita_liquida": "206729.15",
+      "custo_servico_vendido": "61432.64",
+      "despesas_operacionais": "36037.65",
+      "resultado_operacional": "109258.86",
+      "despesas_financeiras": "12431.26",
+      "ir_csll": "0.00",
+      "lucro_liquido": "96827.60",
+      "retirada": "50000.00"
+    }
+  }
+}
