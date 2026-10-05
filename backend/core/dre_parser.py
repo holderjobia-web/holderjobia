@@ -38,20 +38,70 @@ MESES_EXTENSO: dict[str, int] = {
     "JULHO": 7, "AGOSTO": 8, "SETEMBRO": 9, "OUTUBRO": 10, "NOVEMBRO": 11, "DEZEMBRO": 12,
 }
 
-# Rótulo de âncora (normalizado) -> coluna de dre_consolidado.
-# São linhas de SUBTOTAL do demonstrativo (sem código de conta no início).
+# DICIONÁRIO DE SINÔNIMOS — único lugar a editar quando surgir um layout novo.
+# Campo de dre_consolidado -> rótulos de SUBTOTAL aceitos (linhas sem código de
+# conta). Comparação ignora acento, caixa e espaços em volta de "/". Um sinônimo
+# errado não grava número errado em silêncio: as identidades contábeis acusam.
+SINONIMOS: dict[str, tuple[str, ...]] = {
+    "receita_bruta": (
+        "RECEITAS DE VENDAS", "TOTAL RECEITAS DE VENDAS", "RECEITA BRUTA",
+        "RECEITA OPERACIONAL BRUTA", "FATURAMENTO BRUTO",
+    ),
+    "impostos": (
+        "IMPOSTOS E CONTRIBUICOES S/ VENDA", "IMPOSTOS E CONTRIBUICOES S/ VENDAS",
+        "IMPOSTOS SOBRE VENDAS", "TRIBUTOS SOBRE VENDAS",
+    ),
+    "devolucoes": (
+        "VENDAS CANCELADAS / DEVOLUCOES", "DEVOLUCOES E CANCELAMENTOS", "DEVOLUCOES DE VENDAS",
+    ),
+    "receita_liquida": (
+        "RECEITA LIQUIDA", "RECEITA OPERACIONAL LIQUIDA", "RECEITA LIQUIDA DE VENDAS",
+    ),
+    "custo_servico_vendido": (
+        "CUSTO DO SERVICO PRESTADO (CSV)", "CUSTO DA MERCADORIA/SERVICO VENDIDO",
+        "CUSTO DOS SERVICOS PRESTADOS", "CUSTO DOS PRODUTOS VENDIDOS",
+        "CUSTO DAS MERCADORIAS VENDIDAS",
+    ),
+    "despesas_operacionais": ("DESPESAS OPERACIONAIS", "TOTAL DESPESAS OPERACIONAIS"),
+    "resultado_operacional": (
+        "RESULTADO OPERACIONAL", "RESULTADO OPERACIONAL (EBITDA)", "LUCRO OPERACIONAL",
+    ),
+    "despesas_financeiras": (
+        "DESPESAS FINANCEIRAS", "DESPESAS FINANCEIRAS LIQUIDAS",
+        # Resultado não operacional líquido (tarifas/juros − outras receitas): ocupa o
+        # lugar das despesas financeiras na fórmula do lucro (conferido pela identidade).
+        "RECEITAS / DESPESAS NAO OPERACIONAIS",
+    ),
+    "ir_csll": ("IR / CSLL", "IRPJ / CSLL", "PROVISAO PARA IR E CSLL"),
+    "lucro_liquido": (
+        "LUCRO / PREJUIZO LIQUIDO", "LUCRO LIQUIDO", "PREJUIZO LIQUIDO",
+        "LUCRO LIQUIDO DO EXERCICIO", "RESULTADO LIQUIDO",
+    ),
+    "retirada": ("LUCROS DISTRIBUIDOS", "DISTRIBUICAO DE LUCROS"),
+}
+
+# Subtotal auxiliar (não vira coluna): IR/CSLL = lucro antes do IR − lucro líquido
+SINONIMOS_LUCRO_ANTES_IR: tuple[str, ...] = (
+    "LUCRO ANTES DO IR / CSLL", "LUCRO ANTES IR / CSLL", "LUCRO ANTES DOS IMPOSTOS",
+    "RESULTADO ANTES DO IR / CSLL",
+)
+
+ROTULO_CAMPO: dict[str, str] = {
+    "receita_bruta": "Receita bruta",
+    "impostos": "Impostos",
+    "devolucoes": "Devoluções",
+    "receita_liquida": "Receita líquida",
+    "custo_servico_vendido": "Custo do serviço",
+    "despesas_operacionais": "Despesas operacionais",
+    "resultado_operacional": "Resultado operacional",
+    "despesas_financeiras": "Despesas financeiras",
+    "ir_csll": "IR/CSLL",
+    "lucro_liquido": "Lucro líquido",
+    "retirada": "Retirada",
+}
+
 ANCORAS: dict[str, str] = {
-    "RECEITAS DE VENDAS": "receita_bruta",
-    "IMPOSTOS E CONTRIBUICOES S/ VENDA": "impostos",
-    "VENDAS CANCELADAS / DEVOLUCOES": "devolucoes",
-    "RECEITA LIQUIDA": "receita_liquida",
-    "CUSTO DO SERVICO PRESTADO (CSV)": "custo_servico_vendido",
-    "DESPESAS OPERACIONAIS": "despesas_operacionais",
-    "RESULTADO OPERACIONAL": "resultado_operacional",
-    "DESPESAS FINANCEIRAS": "despesas_financeiras",
-    "IR / CSLL": "ir_csll",
-    "LUCRO / PREJUIZO LIQUIDO": "lucro_liquido",
-    "LUCROS DISTRIBUIDOS": "retirada",
+    sinonimo: campo for campo, sinonimos in SINONIMOS.items() for sinonimo in sinonimos
 }
 
 # Colunas mínimas para considerar a extração confiável o bastante para gravar.
@@ -67,18 +117,23 @@ _TOLERANCIA = Decimal("0.05")
 
 # R$ 1.815.142,88  ->  captura "1.815.142,88" (com sinal opcional)
 _TOKEN_VALOR = re.compile(r"R\$\s*(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})")
-# JAN/26, FEV/26 ... (matriz consolidada multi-mês)
-_TOKEN_MES = re.compile(r"\b([A-Z]{3})/(\d{2})\b")
-# JULHO/2026 ... (DRE mensal)
-_TOKEN_MES_EXTENSO = re.compile(
-    r"\b(JANEIRO|FEVEREIRO|MARCO|ABRIL|MAIO|JUNHO|JULHO|"
-    r"AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)/(\d{4})\b"
+# JAN/26, FEV/2026 ... (matriz consolidada multi-mês)
+_TOKEN_MES = re.compile(r"\b([A-Z]{3})/(\d{4}|\d{2})\b")
+_MES_EXT = r"(JANEIRO|FEVEREIRO|MARCO|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)"
+# Mês do DRE mensal, em qualquer linha: JULHO/2026, DEZEMBRO/25, JULHO-2026, JULHO DE 2026, JULHO 2026
+_PADROES_MES_EXTENSO = (
+    re.compile(rf"\b{_MES_EXT}\s*(?:/|-|\bDE\b)\s*(\d{{4}}|\d{{2}})\b"),
+    re.compile(rf"\b{_MES_EXT}\s+(\d{{4}})\b"),
 )
-# Linha que começa com código de conta (linha analítica, não é subtotal)
-_INICIA_COM_CODIGO = re.compile(r"^\s*\d")
+# Só em linha de cabeçalho (DRE/DEMONSTRATIVO), por serem ambíguas no corpo: JAN/2026, 07/2026
+_PADRAO_MES_ABREV = re.compile(r"\b(JAN|FEV|MAR|ABR|MAI|JUN|JUL|AGO|SET|OUT|NOV|DEZ)\s*[/-]\s*(\d{4}|\d{2})\b")
+_PADRAO_MES_NUMERICO = re.compile(r"\b(0[1-9]|1[0-2])\s*/\s*(\d{4})\b")
+_CABECALHO_DRE = re.compile(r"\b(DRE|DEMONSTRATIVO)\b")
+# Linha analítica: começa com código de conta, ou "C|D <conta> 100% ..." no layout gerencial
+_INICIA_COM_CODIGO = re.compile(r"^\s*(?:\d|[CD]\s+\S+\s+\d{1,3}%\s)")
+# Valor BR sem "R$" (layout gerencial); o lookahead descarta a coluna de %
+_TOKEN_VALOR_SEM_RS = re.compile(r"(?<![\d,.])(-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2})(?![\d%])")
 
-# Rótulo auxiliar do DRE mensal (não vira coluna; usado para derivar IR/CSLL)
-_LABEL_LUCRO_ANTES_IR = "LUCRO ANTES DO IR / CSLL"
 
 
 # ---------------------------------------------------------------------------
@@ -115,6 +170,24 @@ def _normalizar(texto: str) -> str:
     return re.sub(r"\s+", " ", sem_acento).strip().upper()
 
 
+def _chave(rotulo: str) -> str:
+    """Chave de comparação de rótulos: normalizado e sem espaços em volta de '/'."""
+    return re.sub(r"\s*/\s*", "/", _normalizar(rotulo))
+
+
+_ANCORAS_CHAVE: dict[str, str] = {_chave(k): v for k, v in ANCORAS.items()}
+_CHAVES_LUCRO_ANTES_IR: set[str] = {_chave(s) for s in SINONIMOS_LUCRO_ANTES_IR}
+
+
+def _coluna_da_ancora(rotulo: str) -> Optional[str]:
+    return _ANCORAS_CHAVE.get(_chave(rotulo))
+
+
+def _ano(bruto: str) -> int:
+    ano = int(bruto)
+    return ano + 2000 if ano < 100 else ano
+
+
 def _parse_valor(bruto: str) -> Optional[Decimal]:
     """'1.815.142,88' -> Decimal('1815142.88'). Formato BR."""
     limpo = bruto.replace(".", "").replace(",", ".")
@@ -134,25 +207,37 @@ def _extrair_meses(linhas: list[str]) -> list[date]:
         achados = _TOKEN_MES.findall(linha.upper())
         if len(achados) >= 2:
             meses: list[date] = []
-            for abrev, ano2 in achados:
+            for abrev, ano in achados:
                 mes = MESES_ABREV.get(abrev)
                 if mes is None:
                     continue
-                ano = 2000 + int(ano2)
-                meses.append(date(ano, mes, 1))
+                meses.append(date(_ano(ano), mes, 1))
             if meses:
                 return meses
     return []
 
 
 def _extrair_mes_extenso(linhas: list[str]) -> Optional[date]:
-    """Localiza o mês do DRE mensal (ex.: 'DRE CLINICA JULHO/2026')."""
-    for linha in linhas:
-        m = _TOKEN_MES_EXTENSO.search(_normalizar(linha))
+    """Localiza o mês do DRE mensal (ex.: 'DRE CLINICA JULHO/2026').
+
+    Prioriza as linhas de cabeçalho (DRE/DEMONSTRATIVO); formatos ambíguos
+    (abreviado, numérico) só valem no cabeçalho.
+    """
+    normalizadas = [_normalizar(linha) for linha in linhas]
+    cabecalhos = [linha for linha in normalizadas if _CABECALHO_DRE.search(linha)]
+    for grupo in (cabecalhos, normalizadas):
+        for linha in grupo:
+            for padrao in _PADROES_MES_EXTENSO:
+                m = padrao.search(linha)
+                if m:
+                    return date(_ano(m.group(2)), MESES_EXTENSO[m.group(1)], 1)
+    for linha in cabecalhos:
+        m = _PADRAO_MES_ABREV.search(linha)
         if m:
-            mes = MESES_EXTENSO.get(m.group(1))
-            if mes:
-                return date(int(m.group(2)), mes, 1)
+            return date(_ano(m.group(2)), MESES_ABREV[m.group(1)], 1)
+        m = _PADRAO_MES_NUMERICO.search(linha)
+        if m:
+            return date(_ano(m.group(2)), int(m.group(1)), 1)
     return None
 
 
@@ -169,6 +254,9 @@ def _extrair_unidade(linhas: list[str]) -> Optional[str]:
         norm = _normalizar(s)
         if norm.startswith("DEMONSTRATIVO") or norm.startswith("DRE "):
             break
+        # ignora lixo de planilha exportada ("F", "I 90", "#REF! FALSO")
+        if "#" in s or not re.search(r"[A-Z]{4,}", norm):
+            continue
         if not _INICIA_COM_CODIGO.match(s):
             return s
     return None
@@ -181,6 +269,54 @@ def _valores_da_linha(linha: str) -> list[Decimal]:
         if v is not None:
             valores.append(v)
     return valores
+
+
+def _rotulo_e_valor(linha: str) -> Optional[tuple[str, Decimal]]:
+    """(rótulo, 1º valor monetário) de uma linha, com ou sem 'R$'. A coluna % é ignorada."""
+    idx = linha.find("R$")
+    if idx != -1:
+        vals = _valores_da_linha(linha[idx:])
+        return (linha[:idx], vals[0]) if vals else None
+    m = _TOKEN_VALOR_SEM_RS.search(linha)
+    if not m:
+        return None
+    v = _parse_valor(m.group(1))
+    return (linha[:m.start()], v) if v is not None else None
+
+
+def _totais_nao_reconhecidos(linhas: list[str], limite: int = 6) -> list[str]:
+    """Linhas de subtotal (sem código de conta) cujo rótulo não está no dicionário —
+    candidatas a novo sinônimo. Alimenta a mensagem de erro."""
+    candidatos: list[str] = []
+    for linha in linhas:
+        if _INICIA_COM_CODIGO.match(linha):
+            continue
+        rv = _rotulo_e_valor(linha)
+        if not rv:
+            continue
+        rotulo = rv[0].strip()
+        if not re.search(r"[A-Z]{3,}", _normalizar(rotulo)):
+            continue
+        if _coluna_da_ancora(rotulo) or _chave(rotulo) in _CHAVES_LUCRO_ANTES_IR:
+            continue
+        candidatos.append(f"'{rotulo}' = {_fmt_brl(rv[1])}")
+        if len(candidatos) >= limite:
+            break
+    return candidatos
+
+
+def _motivo_ancoras_faltando(linhas: list[str], encontradas: set[str]) -> str:
+    faltando = [ROTULO_CAMPO[c] for c in SINONIMOS if c in ANCORAS_ESSENCIAIS and c not in encontradas]
+    motivo = "Não encontrei no arquivo: " + ", ".join(faltando) + "."
+    candidatos = _totais_nao_reconhecidos(linhas)
+    if candidatos:
+        motivo += (
+            " Totais do arquivo que ainda não reconheço: " + "; ".join(candidatos)
+            + ". Se algum deles corresponde a um desses campos, basta cadastrá-lo como sinônimo."
+        )
+    else:
+        motivo += " Layout diferente — revisar manualmente."
+    return motivo
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +423,7 @@ def parsear_consolidado(texto: str) -> ResultadoParse:
         if idx == -1:
             continue
         rotulo = _normalizar(linha[:idx])
-        coluna = ANCORAS.get(rotulo)
+        coluna = _coluna_da_ancora(rotulo)
         if coluna is None or coluna in ancoras_encontradas:
             continue
         valores = _valores_da_linha(linha[idx:])
@@ -301,19 +437,14 @@ def parsear_consolidado(texto: str) -> ResultadoParse:
         ancoras_encontradas.add(coluna)
 
     if not (ANCORAS_ESSENCIAIS & ancoras_encontradas) == ANCORAS_ESSENCIAIS:
-        faltando = ANCORAS_ESSENCIAIS - ancoras_encontradas
         return ResultadoParse(
             ok=False,
             ancoras_encontradas=ancoras_encontradas,
             unidade_texto=_extrair_unidade(linhas),
-            motivo=(
-                "Âncoras essenciais não encontradas: "
-                + ", ".join(sorted(faltando))
-                + ". Layout provavelmente diferente — revisar manualmente."
-            ),
+            motivo=_motivo_ancoras_faltando(linhas, ancoras_encontradas),
         )
 
-    todas_colunas = set(ANCORAS.values())
+    todas_colunas = set(SINONIMOS)
     resultado_meses: list[LinhaMensal] = []
     for i, mes in enumerate(meses):
         valores: dict[str, Optional[Decimal]] = {
@@ -343,11 +474,12 @@ def parsear_consolidado(texto: str) -> ResultadoParse:
 # ---------------------------------------------------------------------------
 
 def parsear_mensal(texto: str) -> ResultadoParse:
-    """Parseia um DRE de um único mês (ex.: 'DRE CLINICA JULHO/2026').
+    """Parseia um DRE de um único mês (ex.: 'DRE CLINICA JULHO/2026' ou
+    'DRE - GERENCIAL DEZEMBRO/25').
 
-    Nesse layout só as linhas de subtotal (âncoras) trazem 'R$'; as linhas
-    analíticas têm valor sem 'R$'. Cada âncora tem 1 valor + 1 percentual (o %
-    não é 'R$', então é ignorado).
+    Layout clássico: só os subtotais (âncoras) trazem 'R$'. Layout gerencial
+    (planilha exportada): nada tem 'R$', linhas analíticas começam com 'C'/'D' +
+    conta. Em ambos, cada âncora tem 1 valor + 1 percentual (ignorado).
     """
     linhas = texto.splitlines()
     mes = _extrair_mes_extenso(linhas)
@@ -357,7 +489,7 @@ def parsear_mensal(texto: str) -> ResultadoParse:
             motivo="Mês do DRE não encontrado (layout mensal não reconhecido).",
         )
 
-    todas_colunas = set(ANCORAS.values())
+    todas_colunas = set(SINONIMOS)
     valores: dict[str, Optional[Decimal]] = {col: None for col in todas_colunas}
     lucro_antes_ir: Optional[Decimal] = None
     ancoras_encontradas: set[str] = set()
@@ -365,18 +497,14 @@ def parsear_mensal(texto: str) -> ResultadoParse:
     for linha in linhas:
         if _INICIA_COM_CODIGO.match(linha):
             continue  # linha analítica (código de conta)
-        idx = linha.find("R$")
-        if idx == -1:
-            continue  # subtotais/âncoras sempre têm R$ neste layout
-        rotulo = _normalizar(linha[:idx])
-        vals = _valores_da_linha(linha[idx:])
-        if not vals:
+        rv = _rotulo_e_valor(linha)
+        if not rv:
             continue
-        valor = vals[0]  # primeiro valor monetário (a coluna % não tem R$)
-        if rotulo == _LABEL_LUCRO_ANTES_IR:
+        rotulo, valor = rv
+        if _chave(rotulo) in _CHAVES_LUCRO_ANTES_IR:
             lucro_antes_ir = valor
             continue
-        coluna = ANCORAS.get(rotulo)
+        coluna = _coluna_da_ancora(rotulo)
         if coluna is None or coluna in ancoras_encontradas:
             continue
         valores[coluna] = valor
@@ -392,16 +520,11 @@ def parsear_mensal(texto: str) -> ResultadoParse:
         valores["ir_csll"] = lucro_antes_ir - valores["lucro_liquido"]  # type: ignore[operator]
 
     if not (ANCORAS_ESSENCIAIS & ancoras_encontradas) == ANCORAS_ESSENCIAIS:
-        faltando = ANCORAS_ESSENCIAIS - ancoras_encontradas
         return ResultadoParse(
             ok=False,
             ancoras_encontradas=ancoras_encontradas,
             unidade_texto=_extrair_unidade(linhas),
-            motivo=(
-                "Âncoras essenciais não encontradas: "
-                + ", ".join(sorted(faltando))
-                + ". Layout mensal diferente — revisar manualmente."
-            ),
+            motivo=_motivo_ancoras_faltando(linhas, ancoras_encontradas),
         )
 
     divergencias, confiabilidade = _validar_identidades(valores)
@@ -444,7 +567,8 @@ def parsear(texto: str) -> ResultadoParse:
     return ResultadoParse(
         ok=False,
         motivo=(
-            "Formato de DRE não reconhecido (nem consolidado multi-mês, nem mensal). "
+            "Mês de referência não encontrado no cabeçalho do DRE (formatos aceitos: "
+            "'JULHO/2026', 'DEZEMBRO/25', 'JULHO DE 2026', 'JAN/2026', '07/2026'). "
             f"Início do arquivo: \"{inicio}\""
         ),
     )

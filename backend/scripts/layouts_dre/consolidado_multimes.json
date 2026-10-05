@@ -1,0 +1,26 @@
+{
+  "descricao": "Matriz consolidada multi-mês com R$ (SAO MATEUS jan-jul/2026)",
+  "unidade": "SAO MATEUS",
+  "total_meses": 7,
+  "confiabilidade_todos": "alta",
+  "esperado": {
+    "2026-01-01": {
+      "receita_bruta": "276589.00",
+      "impostos": "3645.38",
+      "devolucoes": "1675.50",
+      "receita_liquida": "271268.12",
+      "custo_servico_vendido": "58332.23",
+      "despesas_operacionais": "34475.94",
+      "resultado_operacional": "178459.95",
+      "despesas_financeiras": "14341.56",
+      "ir_csll": "5964.15",
+      "lucro_liquido": "158154.24",
+      "retirada": "120000.00"
+    },
+    "2026-07-01": {
+      "receita_bruta": "240729.97",
+      "lucro_liquido": "81649.18",
+      "retirada": "90000.00"
+    }
+  }
+}

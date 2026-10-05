@@ -1,0 +1,21 @@
+{
+  "descricao": "DRE - GERENCIAL exportado de planilha: sem R$, contas com prefixo C/D, mês com ano de 2 dígitos (VALINHOS dez/2025)",
+  "unidade": null,
+  "total_meses": 1,
+  "confiabilidade_todos": "alta",
+  "esperado": {
+    "2025-12-01": {
+      "receita_bruta": "134945.01",
+      "impostos": "0.00",
+      "devolucoes": "14134.31",
+      "receita_liquida": "120810.70",
+      "custo_servico_vendido": "64681.04",
+      "despesas_operacionais": "38387.04",
+      "resultado_operacional": "17742.62",
+      "despesas_financeiras": "7703.93",
+      "ir_csll": "378.00",
+      "lucro_liquido": "9660.69",
+      "retirada": null
+    }
+  }
+}

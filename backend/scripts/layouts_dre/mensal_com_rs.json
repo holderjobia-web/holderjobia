@@ -1,0 +1,21 @@
+{
+  "descricao": "DRE mensal com R$ nos subtotais (VALINHOS jul/2026). Identidade do lucro fura em R$ 2.000 (receita financeira não modelada) -> baixa, como esperado",
+  "unidade": "VALINHOS",
+  "total_meses": 1,
+  "confiabilidade_todos": "baixa",
+  "esperado": {
+    "2026-07-01": {
+      "receita_bruta": "208585.00",
+      "impostos": "19.52",
+      "devolucoes": "1200.00",
+      "receita_liquida": "207365.48",
+      "custo_servico_vendido": "80374.59",
+      "despesas_operacionais": "43376.42",
+      "resultado_operacional": "83614.47",
+      "despesas_financeiras": "9781.25",
+      "ir_csll": "0.00",
+      "lucro_liquido": "75833.22",
+      "retirada": "60000.00"
+    }
+  }
+}
