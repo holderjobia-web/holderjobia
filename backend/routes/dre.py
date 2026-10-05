@@ -189,7 +189,7 @@ async def processar_dre(
 ):
     res = (
         supabase.table("dre_uploads")
-        .select("id, cliente_id, empresa_id, storage_path, nome_arquivo, status")
+        .select("id, cliente_id, empresa_id, storage_path, nome_arquivo, mes_referencia, status")
         .eq("id", upload_id)
         .eq("cliente_id", usuario["cliente_id"])
         .limit(1)

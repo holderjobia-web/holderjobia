@@ -1,0 +1,6 @@
+frontend-next
+docs
+**/.venv
+**/__pycache__
+**/.env
+*.md

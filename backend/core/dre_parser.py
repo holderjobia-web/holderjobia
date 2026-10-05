@@ -432,9 +432,21 @@ def parsear(texto: str) -> ResultadoParse:
         return parsear_consolidado(texto)
     if _extrair_mes_extenso(linhas):
         return parsear_mensal(texto)
+    if not texto.strip():
+        return ResultadoParse(
+            ok=False,
+            motivo=(
+                "O PDF não tem texto selecionável (provavelmente digitalizado ou imagem). "
+                "Exporte o DRE direto do sistema contábil em PDF."
+            ),
+        )
+    inicio = " | ".join(l.strip() for l in linhas if l.strip())[:160]
     return ResultadoParse(
         ok=False,
-        motivo="Formato de DRE não reconhecido (nem consolidado multi-mês, nem mensal).",
+        motivo=(
+            "Formato de DRE não reconhecido (nem consolidado multi-mês, nem mensal). "
+            f"Início do arquivo: \"{inicio}\""
+        ),
     )
 
 

@@ -3,9 +3,15 @@
 import { DragEvent, FormEvent, useEffect, useRef, useState } from "react";
 import { Icone } from "@/components/icons";
 import { Modal } from "@/components/modal";
+import { EmpresaOpcao as Empresa, RedeOpcao, SeletorEmpresa } from "@/components/seletor-empresa";
 import { portalApi } from "@/lib/portal-api";
 
-type Empresa = { id: string; codigo: string; nome_razao_social: string };
+const MESES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+
+function rotuloMes(iso: string): string {
+  const [ano, mes] = iso.split("-");
+  return `${MESES_ABREV[Number(mes) - 1]}/${ano.slice(2)}`;
+}
 
 type Upload = {
   id: string;
@@ -33,7 +39,9 @@ function formatarTamanho(bytes: number | null): string {
 
 export default function EnvioDrePage() {
   const [empresas, setEmpresas] = useState<Empresa[]>([]);
+  const [redes, setRedes] = useState<RedeOpcao[]>([]);
   const [uploads, setUploads] = useState<Upload[]>([]);
+  const [filtroEmpresaId, setFiltroEmpresaId] = useState("");
   const [empresaId, setEmpresaId] = useState("");
   const [mes, setMes] = useState("");
   const [arquivo, setArquivo] = useState<File | null>(null);
@@ -66,7 +74,9 @@ export default function EnvioDrePage() {
 
   async function carregarUploads() {
     try {
-      const { data } = await portalApi.get<Upload[]>("/dre/uploads");
+      const { data } = await portalApi.get<Upload[]>("/dre/uploads", {
+        params: filtroEmpresaId ? { empresa_id: filtroEmpresaId } : undefined,
+      });
       setUploads(data);
     } catch {
       setErro("Não foi possível carregar os envios.");
@@ -74,12 +84,21 @@ export default function EnvioDrePage() {
   }
 
   useEffect(() => {
-    portalApi
-      .get<Empresa[]>("/empresas")
-      .then(({ data }) => setEmpresas(data))
+    Promise.all([
+      portalApi.get<Empresa[]>("/empresas"),
+      portalApi.get<RedeOpcao[]>("/redes"),
+    ])
+      .then(([e, r]) => {
+        setEmpresas(e.data);
+        setRedes(r.data);
+      })
       .catch(() => {});
-    carregarUploads();
   }, []);
+
+  useEffect(() => {
+    carregarUploads();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filtroEmpresaId]);
 
   function nomeEmpresa(id: string | null): string {
     if (!id) return "—";
@@ -98,13 +117,19 @@ export default function EnvioDrePage() {
         sinalizados_baixa?: string[];
         divergencias?: string[];
         motivo?: string;
+        meses_detectados?: string[];
+        empresa?: string;
+        aviso_mes?: string | null;
       }>(`/dre/uploads/${id}/processar`);
       if (data.status === "processado") {
+        const meses = (data.meses_detectados ?? []).map(rotuloMes).join(", ");
         const partes = [
-          `Processado com sucesso. ${data.gravados ?? 0} mês(es) gravado(s).`,
+          `Processado com sucesso. ${data.gravados ?? 0} mês(es) novo(s) gravado(s).`,
+          data.empresa && meses ? `Unidade: ${data.empresa} · Mês(es) do PDF: ${meses}.` : "",
           data.sinalizados_baixa?.length
             ? `Sinalizados para revisão (gravados): ${data.sinalizados_baixa.join(", ")}`
             : "",
+          data.aviso_mes ?? "",
         ].filter(Boolean);
         setOk(partes.join(" "));
       } else {
@@ -325,15 +350,29 @@ export default function EnvioDrePage() {
         {ok && <p className="mt-3 text-sm text-moss-700">{ok}</p>}
       </section>
 
-      <section className="mt-6 rounded-xl bg-white border border-navy-100 shadow-sm overflow-hidden">
+      <div className="mt-6">
+        <SeletorEmpresa
+          empresas={empresas}
+          redes={redes}
+          value={filtroEmpresaId}
+          onChange={setFiltroEmpresaId}
+          titulo="Filtrar envios por unidade"
+          descricao="Deixe sem seleção para ver os envios de todas as unidades."
+        />
+      </div>
+
+      <section className="mt-4 rounded-xl bg-white border border-navy-100 shadow-sm overflow-hidden">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-navy-100">
           <Icone nome="lista" className="h-5 w-5 text-navy-500" />
           <h2 className="font-semibold text-navy-800">Envios recentes</h2>
+          {filtroEmpresaId && (
+            <span className="ml-auto text-xs text-navy-500">{uploads.length} envio(s)</span>
+          )}
         </div>
 
         {uploads.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-navy-500">
-            Nenhum DRE enviado ainda.
+            {filtroEmpresaId ? "Nenhum DRE enviado para esta unidade." : "Nenhum DRE enviado ainda."}
           </p>
         ) : (
           <>

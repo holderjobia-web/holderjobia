@@ -252,12 +252,23 @@ def processar_upload(upload: dict) -> dict:
         _marcar_status(upload_id, "processado", nota)
         status = "processado"
 
+    meses_detectados = [m.mes_referencia.isoformat() for m in resultado.meses]
+    aviso_mes = None
+    mes_informado = upload.get("mes_referencia")
+    if mes_informado and mes_informado[:7] not in {m[:7] for m in meses_detectados}:
+        aviso_mes = (
+            f"O mês informado no envio ({mes_informado[:7]}) não é o mês que consta no PDF "
+            f"({', '.join(m[:7] for m in meses_detectados)}). Vale o mês do PDF."
+        )
+
     return {
         "status": status,
         "gravados": gravados,
         "sinalizados_baixa": sinalizados_baixa,
         "divergencias": divergencias,
-        "meses_detectados": [m.mes_referencia.isoformat() for m in resultado.meses],
+        "meses_detectados": meses_detectados,
+        "empresa": empresa_nome,
+        "aviso_mes": aviso_mes,
     }
 
 
