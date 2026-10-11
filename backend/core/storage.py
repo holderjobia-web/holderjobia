@@ -15,6 +15,13 @@ logger = logging.getLogger(__name__)
 EXPIRACAO_SEGUNDOS = 300  # 5 min — tempo de abrir e conferir o arquivo
 
 
+def objeto_ausente(exc: Exception) -> bool:
+    """True quando o Storage informa que o objeto (ou o bucket) não existe — o registro
+    está no banco, mas o arquivo não está no armazenamento deste ambiente."""
+    texto = (getattr(getattr(exc, "response", None), "text", "") or repr(exc)).lower()
+    return "not found" in texto or "not_found" in texto or "404" in texto
+
+
 def gerar_link_temporario(bucket: str, storage_path: str) -> str | None:
     """URL assinada (curta duração) do arquivo, ou None se não der para gerar."""
     try:

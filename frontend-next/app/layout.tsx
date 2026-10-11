@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "holderjob — Inteligência Financeira",
+  title: "CinkFinanças — Inteligência Financeira",
   description: "SaaS de CFO/BI para administração de empresas: DREs, notas e dashboards.",
 };
 

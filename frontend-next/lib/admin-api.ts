@@ -1,5 +1,5 @@
 /**
- * Axios do front ADMIN (super admin do SaaS holderjob).
+ * Axios do front ADMIN (super admin do SaaS CinkFinanças).
  * Token JWT (JWT_ADMIN_SECRET) guardado em localStorage `admin_token` e em
  * cookie `admin_token` (o cookie é lido pelo middleware.ts para proteger rotas).
  */

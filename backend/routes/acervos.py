@@ -29,7 +29,7 @@ from core.acervos_extracao import extensao_de, previa_csv
 from core.acervos_processamento import processar_indexacao
 from core.auth import admin_do_cliente, usuario_atual
 from core.base_conhecimento import atualizar_chunks_acervo, remover_por_nome_arquivo
-from core.storage import EXPIRACAO_SEGUNDOS, gerar_link_temporario
+from core.storage import EXPIRACAO_SEGUNDOS, gerar_link_temporario, objeto_ausente
 from core.vendas_parser import previa_planilha
 from supabase_client import supabase
 
@@ -259,6 +259,27 @@ async def atualizar_upload(
     return registro
 
 
+def _baixar(upload_id: str, storage_path: str) -> bytes:
+    """Baixa do Storage; arquivo ausente vira 404 explícito (≠ falha genérica 502)."""
+    try:
+        return supabase.storage.from_(config.ACERVOS_BUCKET).download(storage_path)
+    except Exception as e:
+        corpo = getattr(getattr(e, "response", None), "text", "") or repr(e)
+        logger.exception(
+            "Falha ao baixar acervo (upload=%s bucket=%s path=%s) erro=%s",
+            upload_id, config.ACERVOS_BUCKET, storage_path, corpo,
+        )
+        if objeto_ausente(e):
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    "Este arquivo está registrado no sistema, mas não foi encontrado no "
+                    "armazenamento. Reenvie o arquivo."
+                ),
+            )
+        raise HTTPException(status_code=502, detail="Não foi possível abrir o arquivo.")
+
+
 @router.get("/uploads/{upload_id}/conteudo")
 def conteudo_arquivo(upload_id: str, usuario: dict = Depends(usuario_atual)):
     res = (
@@ -272,11 +293,7 @@ def conteudo_arquivo(upload_id: str, usuario: dict = Depends(usuario_atual)):
     if not res.data:
         raise HTTPException(status_code=404, detail="Arquivo não encontrado.")
     upload = res.data[0]
-    try:
-        conteudo = supabase.storage.from_(config.ACERVOS_BUCKET).download(upload["storage_path"])
-    except Exception:
-        logger.exception("Falha ao baixar acervo (upload=%s)", upload_id)
-        raise HTTPException(status_code=502, detail="Não foi possível abrir o arquivo.")
+    conteudo = _baixar(upload_id, upload["storage_path"])
     extensao = extensao_de(upload["nome_arquivo"])
     mime = _MIME_SEGUROS.get(extensao, "application/octet-stream")
     disposicao = "inline" if mime == "application/pdf" or mime.startswith(("image/", "text/")) else "attachment"
@@ -308,12 +325,14 @@ async def visualizar_arquivo(upload_id: str, usuario: dict = Depends(usuario_atu
     previa = None
     erro_previa = None
     if tipo in ("xlsx", "csv"):
+        conteudo = _baixar(upload_id, up["storage_path"])
         try:
-            conteudo = supabase.storage.from_(config.ACERVOS_BUCKET).download(up["storage_path"])
             previa = previa_planilha(conteudo) if tipo == "xlsx" else previa_csv(conteudo)
         except Exception:
             logger.exception("Falha ao gerar prévia (upload=%s)", upload_id)
             erro_previa = "Não foi possível gerar a prévia deste arquivo."
+    elif url is None:
+        _baixar(upload_id, up["storage_path"])  # classifica a falha (ausente × genérica)
 
     if url is None and previa is None:
         raise HTTPException(status_code=502, detail="Não foi possível abrir o arquivo.")

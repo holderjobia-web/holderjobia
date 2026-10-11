@@ -49,6 +49,19 @@ function formatarTamanho(bytes: number | null): string {
   return mb >= 1 ? `${mb.toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
 }
 
+// Com responseType "blob" o corpo do erro também chega como Blob; lê o `detail` do JSON.
+async function detalheDoErro(err: any): Promise<string | undefined> {
+  const data = err?.response?.data;
+  if (data instanceof Blob) {
+    try {
+      return JSON.parse(await data.text())?.detail;
+    } catch {
+      return undefined;
+    }
+  }
+  return data?.detail;
+}
+
 export default function AcervosPage() {
   const [empresas, setEmpresas] = useState<EmpresaOpcao[]>([]);
   const [redes, setRedes] = useState<RedeOpcao[]>([]);
@@ -241,7 +254,7 @@ export default function AcervosPage() {
       if (data.erro_previa) setErroArquivo(data.erro_previa);
     } catch (err: any) {
       if (controller.signal.aborted) return;
-      setErroArquivo(err?.response?.data?.detail ?? "Não foi possível abrir o arquivo.");
+      setErroArquivo(await detalheDoErro(err) ?? "Não foi possível abrir o arquivo.");
     } finally {
       if (!controller.signal.aborted) setCarregandoArquivo(false);
     }

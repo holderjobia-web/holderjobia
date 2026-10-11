@@ -80,6 +80,21 @@ class AcervosTests(unittest.TestCase):
         with patch("core.dre_parser.extrair_texto_pdf", side_effect=ValueError("PDF invalido")), self.assertLogs(level="ERROR"):
             self.assertEqual(acervos_processamento.processar_indexacao(self.upload, b"invalido")["status"], "erro")
 
+    def test_arquivo_ausente_no_storage_vira_404_explicito(self):
+        banco = self.banco()
+        banco.storage.from_.return_value.download.side_effect = Exception({"statusCode": "404", "error": "Not found", "message": "Object not found"})
+        with patch.object(acervos, "supabase", banco), self.assertLogs(level="ERROR"), self.assertRaises(HTTPException) as erro:
+            acervos.conteudo_arquivo("arquivo-1", usuario=self.usuario)
+        self.assertEqual(erro.exception.status_code, 404)
+        self.assertIn("não foi encontrado no armazenamento", erro.exception.detail)
+
+    def test_falha_generica_do_storage_continua_502(self):
+        banco = self.banco()
+        banco.storage.from_.return_value.download.side_effect = Exception("timeout")
+        with patch.object(acervos, "supabase", banco), self.assertLogs(level="ERROR"), self.assertRaises(HTTPException) as erro:
+            acervos.conteudo_arquivo("arquivo-1", usuario=self.usuario)
+        self.assertEqual(erro.exception.status_code, 502)
+
     def test_editar_categoria_e_unidade_acompanha_o_agente(self):
         banco = self.banco()
         dados = acervos.UploadAtualizar(empresa_id="empresa-2", categoria="controle_mensal")

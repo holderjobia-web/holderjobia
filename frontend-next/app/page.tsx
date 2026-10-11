@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 export const metadata: Metadata = {
-  title: "holderjob — Inteligência financeira para grupos de empresas",
+  title: "CinkFinanças — Inteligência financeira para grupos de empresas",
   description:
     "Consolide os DREs de todas as suas empresas, acompanhe margens, retiradas e metas e converse com um CFO digital. Tudo em um só lugar.",
 };
@@ -97,7 +97,7 @@ function Logo({ claro = false }: { claro?: boolean }) {
     <span className="flex items-center gap-2.5">
       <Building2 size={26} strokeWidth={1.6} className={claro ? "text-moss-300" : "text-moss-700"} />
       <span className={`text-xl font-bold tracking-tight ${claro ? "text-white" : "text-navy-900"}`}>
-        holderjob<span className="text-moss-400">.</span>
+        CinkFinanças<span className="text-moss-400">.</span>
       </span>
     </span>
   );
@@ -165,7 +165,7 @@ export default function Home() {
     <div className="min-h-dvh bg-white text-navy-800">
       <header className="sticky top-0 z-40 border-b border-white/10 bg-navy-900/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-5 sm:px-8">
-          <Link href="/" aria-label="holderjob — início">
+          <Link href="/" aria-label="CinkFinanças — início">
             <Logo claro />
           </Link>
           <nav aria-label="Seções" className="hidden items-center gap-8 text-sm text-navy-200 md:flex">

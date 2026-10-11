@@ -27,9 +27,9 @@ export function WorkspaceShell({ titulo, children, itens, inicio, onSair, admini
     <div className="min-h-screen bg-navy-50">
       <a href="#conteudo" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:bg-white focus:p-3">Ir para o conteúdo</a>
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r border-navy-100 bg-white lg:flex">
-        <Link href={inicio} className="flex h-24 items-center gap-3 px-7 text-navy-900" aria-label="holderjob início">
+        <Link href={inicio} className="flex h-24 items-center gap-3 px-7 text-navy-900" aria-label="CinkFinanças início">
           <Building2 className="h-7 w-7 text-moss-700" strokeWidth={1.5} />
-          <span className="text-xl font-bold">holderjob<span className="text-moss-600">.</span></span>
+          <span className="text-xl font-bold">CinkFinanças<span className="text-moss-600">.</span></span>
         </Link>
         <p className="px-7 pb-6 text-xs text-navy-500">{administrativo ? "Administração" : "Gestão de empresas"}</p>
         <nav aria-label="Navegação principal" className="flex-1 overflow-y-auto px-4">
@@ -56,7 +56,7 @@ export function WorkspaceShell({ titulo, children, itens, inicio, onSair, admini
           <div className="flex h-16 items-center justify-between gap-4 px-4 sm:px-8">
             <div className="flex min-w-0 items-center gap-3 text-xs text-navy-500">
               <button ref={menuRef} type="button" aria-label={aberto ? "Fechar menu" : "Abrir menu"} aria-controls="menu-movel" aria-expanded={aberto} onClick={() => setAberto(!aberto)} className="icon-button lg:hidden">{aberto ? <X size={20} /> : <Menu size={20} />}</button>
-              <Link href={inicio} className="font-semibold text-navy-800 lg:hidden">holderjob.</Link>
+              <Link href={inicio} className="font-semibold text-navy-800 lg:hidden">CinkFinanças.</Link>
               <span className="hidden sm:inline">{administrativo ? "Administração" : "Área de gestão"}</span>
               <ChevronRight size={14} className="hidden shrink-0 sm:block" />
               <span className="truncate text-navy-700">{atual?.label ?? "Visão geral"}</span>

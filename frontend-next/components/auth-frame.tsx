@@ -6,7 +6,7 @@ import { Building2, Eye, EyeOff, LockKeyhole } from "lucide-react";
 export function AuthFrame({ titulo, subtitulo, children }: { titulo: string; subtitulo: string; children: ReactNode }) {
   return <main className="auth-surface flex min-h-dvh flex-col bg-navy-50">
     <header className="flex h-20 shrink-0 items-center justify-between border-b border-navy-100 bg-white px-6 sm:px-12">
-      <div className="flex items-center gap-3"><Building2 size={28} className="text-moss-700" strokeWidth={1.5} /><span className="text-xl font-bold text-navy-900">holderjob<span className="text-moss-600">.</span></span></div>
+      <div className="flex items-center gap-3"><Building2 size={28} className="text-moss-700" strokeWidth={1.5} /><span className="text-xl font-bold text-navy-900">CinkFinanças<span className="text-moss-600">.</span></span></div>
       <span className="hidden text-xs text-navy-500 sm:block">Inteligência financeira</span>
     </header>
     <div className="flex flex-1 items-center justify-center px-5 py-12">
